@@ -39,7 +39,7 @@ fileprivate final class TempProgress: @unchecked Sendable {
     private var _index: Int = 0
     private var _curBytes: Int = 0
     private var _totalBytes: Int? = nil
-    private var _startDate = Date.now
+    private var _startDate = Date()
     let lock = NIOLock()
 }
 
@@ -134,7 +134,7 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
         let (headerBuffer, bodyBuffer) = buffers
         var r = context.eventLoop.makeSucceededVoidFuture()
 
-        let startDate = Date.now
+        let startDate = Date()
 
         // 处理请求体，分片发出
         if case let .streaming(totalSize, action) = bufferStrategy {
