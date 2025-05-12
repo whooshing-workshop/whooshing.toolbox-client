@@ -96,7 +96,7 @@ public struct ProgressContext<Value>: CustomStringConvertible {
 
     /// 当前任务已耗费的时间（单位：秒）。
     public var timeCost: TimeInterval {
-        Date.now.timeIntervalSince(startDate)
+        Date().timeIntervalSince(startDate)
     }
 
     /// 返回当前进度上下文的字符串描述，方便调试和日志记录。
