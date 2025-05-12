@@ -58,7 +58,7 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     private let ioHandler: RequestIOHandler?
     private let progressPool: SendableDictionary<ObjectIdentifier, TempProgress> = .init()
 
-    init(promise: EventLoopPromise<ClientResponse?>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
+    public init(promise: EventLoopPromise<ClientResponse?>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
         self.promise = promise
         self.ioHandler = ioHandler
         self.byteBufferAllocator = byteBufferAllocator
