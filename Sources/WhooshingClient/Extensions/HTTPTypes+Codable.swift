@@ -1,6 +1,6 @@
 import NIOHTTP1
 
-#if WHOOSHING_VAPOR
+#if canImport(Vapor)
 
 import Vapor
 

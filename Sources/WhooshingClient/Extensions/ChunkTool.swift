@@ -1,4 +1,4 @@
-#if !WHOOSHING_VAPOR
+#if !canImport(Vapor)
 
 import NIOCore
 
