@@ -1,6 +1,9 @@
 import Foundation
 import NIOCore
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
 
 /// 数据缓冲策略，用于控制数据如何在处理过程中进行缓存或流式传输。
 ///

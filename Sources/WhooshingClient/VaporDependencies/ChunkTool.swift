@@ -1,5 +1,3 @@
-#if !WHOOSHING_VAPOR
-
 import NIOCore
 
 public struct ChunkTool {
@@ -33,5 +31,3 @@ public struct ChunkTool {
         return resultBuffer
     }
 }
-
-#endif

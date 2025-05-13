@@ -5,6 +5,10 @@ import NIOConcurrencyHelpers
 import Foundation
 import Logging
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 // 用于处理请求客户端与服务器之间的加密机制
 
 public protocol RequestIOHandler: Sendable {

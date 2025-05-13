@@ -6,6 +6,10 @@ import Cryptos
 import NIOHTTP1
 import Foundation
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sendable {
     typealias Value = APIReqClient
 

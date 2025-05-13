@@ -5,6 +5,10 @@ import NIO
 import NIOFileSystem
 import NIOHTTP1
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 /// 定义在发送请求前执行的操作闭包
 /// - Parameters:
 ///   - request: 可变的客户端请求对象，用于修改请求内容

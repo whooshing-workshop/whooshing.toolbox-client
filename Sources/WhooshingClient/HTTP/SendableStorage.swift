@@ -1,3 +1,7 @@
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 public final class SendableStorage: Sendable {
     private let storage: SendableDictionary<ObjectIdentifier, Sendable> = .init()
     
@@ -12,8 +16,4 @@ public final class SendableStorage: Sendable {
             storage[ObjectIdentifier(key.self)] = newValue
         }
     }
-}
-
-public protocol StorageKey {
-    associatedtype Value: Sendable
 }
