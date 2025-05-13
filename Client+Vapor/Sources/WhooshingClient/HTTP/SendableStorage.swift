@@ -1,13 +1,5 @@
-#if canImport(Vapor)
-
+#if WHOOSHING_VAPOR
 import Vapor
-
-#else
-
-public protocol StorageKey {
-    associatedtype Value: Sendable
-}
-
 #endif
 
 public final class SendableStorage: Sendable {

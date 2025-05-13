@@ -3,6 +3,10 @@ import NIOCore
 import ErrorHandle
 import Foundation
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     public var version: HTTPVersion
     public var status: HTTPResponseStatus

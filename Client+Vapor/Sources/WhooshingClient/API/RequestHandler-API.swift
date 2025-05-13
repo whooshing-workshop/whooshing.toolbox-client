@@ -6,6 +6,10 @@ import Logging
 import NIOHTTP1
 import Foundation
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 extension APIReqClient {
     var apiRequestIoData: API.RequestIOData? { self.storage[API.RequestIOData.self] }
 }

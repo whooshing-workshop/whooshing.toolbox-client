@@ -3,6 +3,10 @@ import NIOCore
 import ErrorHandle
 import Foundation
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     public var method: HTTPMethod
     public var url: WebURI
