@@ -11,6 +11,10 @@ extension ByteBuffer: @retroactive SafeDataConvertable {
     public func data() -> Data { .init(buffer: self) }
 }
 
+public extension URL {
+    func toUri(with path: String) -> WebURI { .init(stringLiteral: self.absoluteString + path) }
+}
+
 public func streamingHandle(
     chunkData: inout ByteBuffer,
     context: ChannelHandlerContext,
