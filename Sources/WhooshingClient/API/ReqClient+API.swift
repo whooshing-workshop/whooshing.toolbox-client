@@ -1,9 +1,10 @@
-import Vapor
 import ErrorHandle
 import DataConvertable
 import NIOCore
 import Logging
 import Cryptos
+import NIOHTTP1
+import Foundation
 
 final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sendable {
     typealias Value = APIReqClient
@@ -26,13 +27,13 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
     func send(
         _ method: HTTPMethod,
         headers: HTTPHeaders,
-        to url: URI,
+        to url: WebURI,
         bufferStrategy: BufferStrategy,
         beforeSend: @escaping BeforeSendAction,
         afterSend: @escaping AsyncAfterSendAction,
         progress: @escaping ProgressAction
-    ) -> EventLoopFuture<ClientResponse?> {
-        let req = ClientRequest(method: method, url: url, headers: headers, body: nil, byteBufferAllocator: self.byteBufferAllocator)
+    ) -> EventLoopFuture<HTTPResponse?> {
+        let req = HTTPRequest(method: method, url: url, headers: headers, body: nil)
         return self.makeChannel(url: req.url).flatMap { (channel, handler, domain) in
             do {
                 var request = req
@@ -54,11 +55,11 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
         }
     }
 
-    struct JSONData: Content {
+    struct JSONData: Codable {
         let data: Data
     }
     
-    private func _send(request: ClientRequest, channel: Channel, handler: RequestHandler, domain: String?, bufferStrategy: BufferStrategy, progress: @escaping @Sendable (ProgressContext<ClientResponse?>) throws -> Void) -> EventLoopFuture<ClientResponse?> {
+    private func _send(request: HTTPRequest, channel: Channel, handler: RequestHandler, domain: String?, bufferStrategy: BufferStrategy, progress: @escaping @Sendable (ProgressContext<HTTPResponse?>) throws -> Void) -> EventLoopFuture<HTTPResponse?> {
         let id = ObjectIdentifier(channel)
         var r = eventLoop.makeSucceededVoidFuture()
         guard let ioData = self.apiRequestIoData else { return eventLoop.makeFailedFuture(APIReqErr.requestParaMissing.d("apiRequestIoData", 12013, (#file, #line))) }
@@ -76,13 +77,13 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
         }
     }
 
-    struct AuthExchangeJSON: Content {
+    struct AuthExchangeJSON: Encodable {
         let credential: Data
         let tokenEncrypted: Data
     }
 
     /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行加密并哈希
-    func authExchange(request: ClientRequest, handler: RequestHandler, domain: String?, channel: Channel) -> EventLoopFuture<Void> {
+    func authExchange(request: HTTPRequest, handler: RequestHandler, domain: String?, channel: Channel) -> EventLoopFuture<Void> {
         do {
             let ioData = self.apiRequestIoData!
             let id = ObjectIdentifier(channel)
@@ -96,7 +97,7 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
             self.logger?.trace("API.Client-认证中: 发送用户凭据以及用户口令")
             var headers: HTTPHeaders = ["content-type": "application/json"]
             if let domain = domain {
-                headers.replaceOrAdd(name: .host, value: domain)
+                headers.replaceOrAdd(name: "host", value: domain)
             }
             return self.send(.init(method: .POST, url: request.url, headers: headers, body: .init(data: body)), channel: channel, handler: handler, bufferStrategy: .collect, progress: { _ in }).flatMapThrowing { res in
                 // 此处一定有响应，因为 bufferStrategy 是 .collect
@@ -108,7 +109,7 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
                 guard let token = Data(base64Encoded: ioData.token) else { throw APIReqErr.parseParaFailed.d("用户口令", 14003, (#file, #line)) }
                 let tokenKey = Crypto.Symm.Key(data: token)
                 self.logger?.trace("API.Client-正在完成认证: 获取对方发来的加密新密钥")
-                let keyEncrypted = try res.content.decode(JSONData.self).data
+                let keyEncrypted = try res.jsonBodyDecode(JSONData.self).data
                 self.logger?.trace("API.Client-正在完成认证: 使用用户口令解密新密钥")
                 let newKey: Crypto.Symm.Key = try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey)
                 self.logger?.trace("API.Client-正在完成认证: 注册该新密钥，用于将来的连线加密")

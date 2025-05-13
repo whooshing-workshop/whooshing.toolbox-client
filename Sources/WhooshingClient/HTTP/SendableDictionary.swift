@@ -1,8 +1,8 @@
-import Vapor
 import DataConvertable
 import Cryptos
 import NIO
 import NIOConcurrencyHelpers
+import Foundation
 
 /// 一个线程安全的字典类型，封装对原始字典的并发访问控制。
 ///
@@ -31,8 +31,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     ///
     /// - Parameters:
     ///   - wrapped: 初始化时的字典内容，默认为空字典。
-    ///   - lockLabel: 队列标签，可用于调试，默认为随机字符串。
-    public init(wrapped: [Key: Value] = [:], lockLabel: String = String(Int.random())) {
+    public init(wrapped: [Key: Value] = [:]) {
         self.wrapped = wrapped
     }
 

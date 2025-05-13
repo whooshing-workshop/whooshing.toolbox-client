@@ -1,14 +1,15 @@
-import Vapor
 import Cryptos
 import ErrorHandle
 import NIOCore
 import NIOConcurrencyHelpers
+import Foundation
+import Logging
 
 // 用于处理请求客户端与服务器之间的加密机制
 
 public protocol RequestIOHandler: Sendable {
-    func send(request: ClientRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer>
-    func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(ClientResponse?, ByteBuffer)>
+    func send(request: HTTPRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer>
+    func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(HTTPResponse?, ByteBuffer)>
     func connectionStart(context: ChannelHandlerContext) -> EventLoopFuture<Void>
     func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void>
 }
@@ -45,11 +46,11 @@ fileprivate final class TempProgress: @unchecked Sendable {
 
 public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     public typealias InboundIn = ByteBuffer
-    public typealias InboundOut = ClientResponse
-    public typealias OutboundIn = ClientRequest
+    public typealias InboundOut = HTTPResponse
+    public typealias OutboundIn = HTTPRequest
     public typealias OutboundOut = ByteBuffer
     
-    var promise: EventLoopPromise<ClientResponse?>!
+    var promise: EventLoopPromise<HTTPResponse?>!
     var progress: (ProgressContext<Bool>) throws -> Void = { _ in }
     var bufferStrategy: BufferStrategy = .collect
 
@@ -58,7 +59,7 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     private let ioHandler: RequestIOHandler?
     private let progressPool: SendableDictionary<ObjectIdentifier, TempProgress> = .init()
 
-    public init(promise: EventLoopPromise<ClientResponse?>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
+    public init(promise: EventLoopPromise<HTTPResponse?>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
         self.promise = promise
         self.ioHandler = ioHandler
         self.byteBufferAllocator = byteBufferAllocator
@@ -68,7 +69,7 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         var buffer = unwrapInboundIn(data)
 
-        guard let ioHandler = self.ioHandler else {  let res = try! ClientResponse(data: buffer); promise.succeed(res); return }
+        guard let ioHandler = self.ioHandler else {  let res = try! HTTPResponse(data: buffer); promise.succeed(res); return }
         
         let streaming: Bool
         if let bufferSuffix = buffer.readSlice(length: ChunkTool.eof.readableBytes) { streaming = bufferSuffix != ChunkTool.eof } 
@@ -83,8 +84,8 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
                 var isHeaders = false
                 if self.progressPool[id] == nil { 
                     self.progressPool[id] = .init()
-                    if let res = try? ClientResponse(data: response.1) {
-                        if let sizeStr = res.headers.first(name: .contentLength), let size = Int(sizeStr) {
+                    if let res = try? HTTPResponse(data: response.1) {
+                        if let sizeStr = res.headers.first(name: "content-length"), let size = Int(sizeStr) {
                             self.progressPool[id]!.totalBytes = size
                         }
                         isHeaders = true
@@ -233,7 +234,7 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     }
     
     func errorHappend(context: ChannelHandlerContext, error: Error) {
-        logger?.report(error: error)
+        logger?.warning("\(error)")
         context.fireErrorCaught(error)
     }
 
