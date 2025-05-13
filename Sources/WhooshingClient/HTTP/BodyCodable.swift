@@ -1,9 +1,11 @@
 import NIOCore
 import ErrorHandle
 import Foundation
+import NIOHTTP1
 
 public protocol BodyCodable {
     var body: ByteBuffer? { get set }
+    var headers: HTTPHeaders { get set }
     mutating func jsonBodyEncode<T: Encodable>(_ value: T) throws
     func jsonBodyDecode<T: Decodable>(_ type: T.Type) throws -> T
 }
@@ -20,6 +22,7 @@ public extension BodyCodable {
             var buffer = ByteBuffer()
             try JSONEncoder().encode(value, into: &buffer)
             self.body = buffer
+            self.headers.replaceOrAdd(name: "content-type", value: "application/json")
         } catch {
             throw BodyCodableErr.bodyEncodeFailed.d(14085, (#file, #line)).subErr(error)
         }
