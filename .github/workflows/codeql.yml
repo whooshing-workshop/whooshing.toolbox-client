@@ -9,7 +9,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '0 3 * * 0' # 每周执行一次扫描
+    - cron: '0 3 * * 0'
 
 jobs:
   analyze:
@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'swift' ] # 支持的语言
+        language: [ 'swift' ]
 
     steps:
     - name: Checkout repository
