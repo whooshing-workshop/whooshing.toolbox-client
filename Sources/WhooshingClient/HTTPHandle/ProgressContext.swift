@@ -1,4 +1,3 @@
-import Vapor
 import Foundation
 import NIOCore
 
@@ -30,7 +29,7 @@ public enum BufferStrategy: Sendable {
 ///
 /// `ProgressContext` 用于追踪任务的当前进度，包括已传输字节数、总字节数、耗时、速度等信息，
 /// 同时携带与该任务相关的通道信息和用户自定义的响应值。
-public struct ProgressContext<Value>: CustomStringConvertible {
+public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Value: Sendable {
     
     /// 当前任务在整个进度列表中的索引编号（适用于分片或批量任务）。
     public let index: Int
@@ -51,7 +50,7 @@ public struct ProgressContext<Value>: CustomStringConvertible {
     public let startDate: Date
 
     /// 与该任务关联的通道（如网络连接、文件流等）。
-    public let channel: Channel
+    public private(set) unowned var channel: Channel
 
     /// 与该进度上下文相关联的用户自定义响应值。
     public let response: Value

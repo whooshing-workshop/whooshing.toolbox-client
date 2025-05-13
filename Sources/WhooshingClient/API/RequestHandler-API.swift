@@ -1,9 +1,10 @@
-import Vapor
 import Cryptos
 import ErrorHandle
 import DataConvertable
-import NIO
+import NIOCore
 import Logging
+import NIOHTTP1
+import Foundation
 
 extension APIReqClient {
     var apiRequestIoData: API.RequestIOData? { self.storage[API.RequestIOData.self] }
@@ -16,7 +17,7 @@ public enum API {
         let token: String
         let connectionKeys: SendableDictionary<ObjectIdentifier, Crypto.Symm.Key> = .init()
         let readingBufferDatas: SendableDictionary<ObjectIdentifier, ByteBuffer> = .init()
-        let errorTemps: SendableDictionary<ObjectIdentifier, HTTPStatus> = .init()
+        let errorTemps: SendableDictionary<ObjectIdentifier, HTTPResponseStatus> = .init()
         
         init(credential: String, token: String) {
             self.credential = credential
@@ -37,7 +38,7 @@ public enum API {
         let logger: Logger?
         
         /// 发送请求时，进行编码并加密
-        func send(request: ClientRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer> {
+        func send(request: HTTPRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer> {
             guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12006, (#file, #line))) }
             let id = ObjectIdentifier(context.channel)
             do {
@@ -58,7 +59,7 @@ public enum API {
         }
 
         /// 收到响应时，进行解密并解码
-        func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(ClientResponse?, ByteBuffer)> {
+        func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(HTTPResponse?, ByteBuffer)> {
             guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12010, (#file, #line))) }
             let id = ObjectIdentifier(context.channel)
 
@@ -93,7 +94,7 @@ public enum API {
                     dic: ioData.readingBufferDatas,
                     streaming: streaming
                 ).flatMapThrowing { data in
-                    if let d = data { return (try ClientResponse(data: d), plainStable) } 
+                    if let d = data { return (try HTTPResponse(data: d), plainStable) } 
                     else { return (nil, plainStable) }
                 }
             } catch let err {
@@ -102,7 +103,7 @@ public enum API {
         }
 
         // 检查 response 是否为 HTTP 格式的头，如果是，则返回其状态码
-        func checkHeader(res: ByteBuffer) -> HTTPStatus? {
+        func checkHeader(res: ByteBuffer) -> HTTPResponseStatus? {
             do {
                 let res = try String(data: res.data())
                 let lines = res.split(separator: "\r\n")
@@ -116,7 +117,7 @@ public enum API {
 
         // 检查 response 是否为 HTTP 格式且包括错误状态码
         func parseError(body: ByteBuffer) -> Error {
-            struct BodyReply: Content {
+            struct BodyReply: Codable {
                 let error: Bool
                 let reason: String
             }
