@@ -15,7 +15,12 @@ open class ReqClient: @unchecked Sendable {
     public var ioHandler: RequestIOHandler?
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
-
+    public var channel: Channel? {
+        if let channel = __channel, channel.isActive { return channel }
+        return nil
+    }
+    
+    private weak var __channel: Channel?
     private let headerPool: SendableDictionary<ObjectIdentifier, HTTPResponse> = .init()
     private var lock: NIOLock = .init()
     
