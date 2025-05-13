@@ -85,7 +85,7 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         host: String,
         port: Int? = nil,
         path: String = "/",
-        query: [String: String] = [:],
+        query: [String: String],
         fragment: String? = nil
     ) {
         let q = query.map { key, value in
@@ -94,19 +94,41 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
             return "\(encodedKey)=\(encodedValue)"
         }.joined(separator: "&")
         
+        self = Self(scheme: scheme, host: host, port: port, path: path, query: q.isEmpty ? nil : q, fragment: fragment)
+    }
+    
+    /// 根据各个组成部分构造 WebURI。
+    ///
+    /// - Parameters:
+    ///   - scheme: 协议方案（http/https/ws/wss）。
+    ///   - host: 主机名或 IP。
+    ///   - port: 可选端口号。
+    ///   - path: 路径部分，默认为 "/"。
+    ///   - query: 查询参数，默认为 nil。
+    ///   - fragment: URL 片段标识符，默认 nil。
+    public init(
+        scheme: Scheme,
+        host: String,
+        port: Int? = nil,
+        path: String = "/",
+        query: String? = nil,
+        fragment: String? = nil
+    ) {
+        let q = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        
         let p = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
         
         self.scheme = scheme
         self.host = host
         self.port = port
         self.path = (p == nil || p!.isEmpty) ? "/" : p!
-        self.query = q.isEmpty ? nil : q
+        self.query = (q == nil || q!.isEmpty) ? nil : q!
         self.fragment = fragment?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
         
         var res = "\(scheme)://\(host)"
         if let port = port { res += ":\(port)" }
         res += "\(path)"
-        if !q.isEmpty { res += "?\(q)" }
+        if let q = self.query { res += "?\(q)" }
         if let fragment = fragment { res += "#\(fragment)" }
         
         self.string = res
