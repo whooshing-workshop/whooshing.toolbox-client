@@ -39,8 +39,10 @@ let package = Package(
         .testTarget(
             name: "toolbox-client-Tests",
             dependencies: [
+                .product(name: "Vapor", package: "whooshing-vapor"),
                 .target(name: "WhooshingClient"),
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
     ]
 )
