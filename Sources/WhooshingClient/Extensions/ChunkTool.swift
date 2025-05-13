@@ -1,4 +1,4 @@
-#if !WHOOSHING_Vapor
+#if !WHOOSHING_VAPOR
 
 import NIOCore
 
