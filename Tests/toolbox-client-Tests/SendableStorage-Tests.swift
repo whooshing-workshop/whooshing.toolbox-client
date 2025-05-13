@@ -1,6 +1,10 @@
 import Testing
 @testable import WhooshingClient
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 @Suite("SendableStorage Tests")
 struct SendableStorageTests {
 
