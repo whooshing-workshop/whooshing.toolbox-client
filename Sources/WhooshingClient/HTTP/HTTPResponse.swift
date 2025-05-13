@@ -7,13 +7,21 @@ import Foundation
 import Vapor
 #endif
 
+/// 表示一个 HTTP 响应，包含状态码、版本、头部信息、正文内容和相关通道。
+/// 适用于客户端与服务端的 HTTP 响应处理和构造。
 public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
+    /// HTTP 协议版本，默认为 HTTP/1.1。
     public var version: HTTPVersion
+    /// HTTP 响应状态，例如 200 OK、404 Not Found。
     public var status: HTTPResponseStatus
+    /// HTTP 响应头，用于包含响应的元信息，例如 Content-Type。
     public var headers: HTTPHeaders
+    /// HTTP 响应体内容，通常为 HTML、JSON 等。
     public var body: ByteBuffer?
+    /// 与响应相关联的底层 NIO 通道（可选），用于网络上下文。
     public weak var channel: Channel?
         
+    /// 响应的字符串描述，包括状态行、头部信息和正文，适用于调试或日志记录。
     public var description: String {
         let statusLine = "HTTP/\(version.major).\(version.minor) \(status.code) \(status.reasonPhrase)\r\n"
 
@@ -33,6 +41,13 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         return statusLine + headerLines + "\r\n" + bodyString
     }
     
+    /// 创建一个新的 HTTPResponse 实例。
+    ///
+    /// - Parameters:
+    ///   - status: HTTP 状态码。
+    ///   - body: 响应体内容，默认为 nil。
+    ///   - version: 协议版本，默认为 HTTP/1.1。
+    ///   - headers: 响应头，默认为空。
     public init(
         status: HTTPResponseStatus,
         body: ByteBuffer? = nil,
@@ -45,6 +60,10 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         self.headers = headers
     }
    
+    /// 从 ByteBuffer 中解析构造 HTTPResponse 实例。
+    ///
+    /// - Parameter data: 包含完整响应内容的字节缓冲。
+    /// - Throws: 如果解析失败，抛出相关错误。
     public init(data: ByteBuffer) throws {
         var (header, body) = try Self.parseHTTPResponse(from: data)
         guard let headers = header.readString(length: header.readableBytes)?.components(separatedBy: "\r\n") else { throw Err.responseParseFailed.d("无法将请求转为 String", 10070, (#file, #line)) }
@@ -68,7 +87,11 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         self.body = body
     }
     
-    // 解析 HTTP 版本号
+    /// 解析 HTTP 协议版本字符串，转换为 HTTPVersion 实例。
+    ///
+    /// - Parameter versionString: 形如 "HTTP/1.1" 的版本字符串。
+    /// - Returns: HTTPVersion 对象。
+    /// - Throws: 如果格式不正确或转换失败，抛出异常。
     static private func parseHTTPVersion(_ versionString: String) throws -> HTTPVersion {
         // 检查前缀是否为 "HTTP/"
         guard versionString.hasPrefix("HTTP/") else {
@@ -89,7 +112,11 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         return HTTPVersion(major: major, minor: minor)
     }
    
-   // 解析 HTTP 响应，分割请求头和请求体
+    /// 从 ByteBuffer 中提取 HTTP 响应的头部和正文内容。
+    ///
+    /// - Parameter buffer: 完整响应数据。
+    /// - Returns: 包含头部和正文的元组。
+    /// - Throws: 如果格式不正确或提取失败，抛出错误。
     static private func parseHTTPResponse(from buffer: ByteBuffer) throws -> (headers: ByteBuffer, body: ByteBuffer?) {
         // 查找请求头和请求体的分隔符 `\r\n\r\n`
         if let headerEndIndex = findHeaderEndIndex(in: buffer) {
@@ -103,7 +130,10 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         return (buffer, nil)
     }
    
-    // 查找响应头结束的位置（即 \r\n\r\n）
+    /// 查找 HTTP 响应头与正文之间的分隔位置（\r\n\r\n）。
+    ///
+    /// - Parameter buffer: 响应数据。
+    /// - Returns: 分隔符在缓冲区中的索引；若未找到返回 nil。
     static private func findHeaderEndIndex(in buffer: ByteBuffer) -> Int? {
         let searchPattern: [UInt8] = [13, 10, 13, 10]  // \r\n\r\n
         var index = buffer.readerIndex
@@ -120,6 +150,7 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         return nil
     }
     
+    /// 定义 HTTPResponse 中可能出现的错误，用于响应解析失败处理。
     enum Err: String, ErrList {
         var domain: String { "woo.sys.client.response.err" }
         case responseParseFailed = "响应解析失败"
@@ -128,6 +159,10 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
 }
 
 extension HTTPResponse: Codable {
+    /// 从 Decoder 实例解码生成 HTTPResponse。
+    ///
+    /// - Parameter decoder: 用于解码的 Decoder 实例。
+    /// - Throws: 解码失败时抛出异常。
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decode(HTTPVersion.self, forKey: .version)
@@ -137,6 +172,10 @@ extension HTTPResponse: Codable {
         channel = nil
     }
 
+    /// 将 HTTPResponse 编码为指定的 Encoder。
+    ///
+    /// - Parameter encoder: 用于编码的 Encoder 实例。
+    /// - Throws: 编码失败时抛出异常。
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
