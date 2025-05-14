@@ -3,5 +3,5 @@
 在你的 Package.swift 加入：
 
 ``` swift
-.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-client-vapor.git", .upToNextMajor(from: "1.0.0"))
+.package(url: "https://github.com/SJJC-Team/whooshing.toolbox-client.git", .upToNextMajor(from: "1.0.0"))
 ```
