@@ -4,6 +4,10 @@ import NIOHTTP1
 import NIOCore
 import Foundation
 
+#if WHOOSHING_VAPOR
+import Vapor
+#endif
+
 extension String: @retroactive Error {}
 
 @Suite("HTTPResponse Tests")
@@ -76,4 +80,32 @@ struct HTTPResponseTests {
         let response = HTTPResponse(status: .ok, body: nil, version: .http1_1, headers: [:])
         #expect(throws: Error.self, performing: { try response.jsonBodyDecode(Payload.self) })
     }
+
+    #if WHOOSHING_VAPOR
+    @Test("Vapor ResponseEncodable / AsyncResponseEncodable")
+    func testVaporEncodeResponse() throws {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+
+        var buffer = ByteBufferAllocator().buffer(capacity: 0)
+        buffer.writeString("test body")
+
+        let original = HTTPResponse(
+            status: .created,
+            body: buffer,
+            version: .http1_1,
+            headers: ["X-Test": "yes"]
+        )
+
+        let res1 = try original.encodeResponse(for: Request(application: app, on: app.eventLoopGroup.next())).wait()
+        #expect(res1.status == .created)
+        #expect(res1.headers["X-Test"] == ["yes"])
+        let string1 = res1.body.string
+        #expect(string1 == "test body")
+
+        let res2 = try original.encodeResponse(for: Request(application: app, on: app.eventLoopGroup.next())).wait()
+        let string2 = res2.body.string
+        #expect(string2 == "test body")
+    }
+    #endif
 }
