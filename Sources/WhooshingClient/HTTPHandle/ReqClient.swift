@@ -15,7 +15,7 @@ open class ReqClient: @unchecked Sendable {
     public var ioHandler: RequestIOHandler?
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
-    public weak var mainHandler: RemovableChannelHandler?
+    public weak var mainHandler: (RemovableChannelHandler & Sendable)?
     public weak var channel: Channel? {
         if let channel = __channel, channel.isActive { return channel }
         return nil

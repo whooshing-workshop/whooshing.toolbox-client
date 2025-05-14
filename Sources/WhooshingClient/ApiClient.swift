@@ -20,7 +20,7 @@ public final class ApiClient: Sendable {
     }
     
     public weak var channel: (any Channel)? { client.channel }
-    public weak var mainHandler: RemovableChannelHandler? { client.mainHandler }
+    public weak var mainHandler: (RemovableChannelHandler & Sendable)? { client.mainHandler }
     
     private let client: APIReqClient
 
