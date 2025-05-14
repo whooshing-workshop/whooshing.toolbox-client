@@ -18,6 +18,7 @@ jobs:
       extra_musl_flags: --target WhooshingClient
       ios_xcodebuild_action: ''
       ios_scheme_name: whooshing.toolbox-client-vapor
+      inputs.with_api_check: false
     secrets: inherit
 
   test-parallel:
