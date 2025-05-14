@@ -10,6 +10,18 @@ import NIOHTTP1
 /// 并自动将用户凭据与令牌存储在请求上下文中，用于后续认证。
 public final class ApiClient: Sendable {
     
+    public var key: Crypto.Symm.Key? {
+        guard
+            let ioData = client.storage[API.RequestIOData.self],
+            let channel = client.channel,
+            let key = ioData.connectionKeys[ObjectIdentifier(channel)]
+        else { return nil }
+        return key
+    }
+    
+    public weak var channel: (any Channel)? { client.channel }
+    public weak var mainHandler: (RemovableChannelHandler & Sendable)? { client.mainHandler }
+    
     private let client: APIReqClient
 
     private let allocator = ByteBufferAllocator()
