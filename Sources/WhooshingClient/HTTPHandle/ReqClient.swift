@@ -15,7 +15,8 @@ open class ReqClient: @unchecked Sendable {
     public var ioHandler: RequestIOHandler?
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
-    public var channel: Channel? {
+    public weak var mainHandler: RemovableChannelHandler?
+    public weak var channel: Channel? {
         if let channel = __channel, channel.isActive { return channel }
         return nil
     }
@@ -53,6 +54,8 @@ open class ReqClient: @unchecked Sendable {
 
         if let channel = self.channelPool[id], channel.isActive {
             return channel.pipeline.handler(type: RequestHandler.self).flatMap { handler in
+                self.__channel = channel
+                self.mainHandler = handler
                 return channel.eventLoop.makeSucceededFuture((channel, handler, isDomainHost ? url.host : nil))
             }
         }
@@ -64,8 +67,7 @@ open class ReqClient: @unchecked Sendable {
                 channel.pipeline.addHandlers([
                     LengthFieldPrepender(lengthFieldLength: .eight, lengthFieldEndianness: .big),
                     ByteToMessageHandler(LengthFieldBasedFrameDecoder(lengthFieldLength: .eight, lengthFieldEndianness: .big)),
-                    handler,
-                    NIOCloseOnErrorHandler()
+                    handler
                 ])
             }
             .channelOption(.socketOption(.tcp_nodelay), value: 1)
@@ -74,6 +76,8 @@ open class ReqClient: @unchecked Sendable {
 
         return bootstrap.connect(host: url.host, port: port).map { channel in
             self.channelPool[id] = channel
+            self.__channel = channel
+            self.mainHandler = handler
             return (channel, handler, isDomainHost ? url.host : nil)
         }
     }

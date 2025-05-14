@@ -19,6 +19,9 @@ public final class ApiClient: Sendable {
         return key
     }
     
+    public weak var channel: (any Channel)? { client.channel }
+    public weak var mainHandler: RemovableChannelHandler? { client.mainHandler }
+    
     private let client: APIReqClient
 
     private let allocator = ByteBufferAllocator()

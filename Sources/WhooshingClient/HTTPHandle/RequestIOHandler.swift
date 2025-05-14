@@ -80,7 +80,7 @@ fileprivate final class TempProgress: @unchecked Sendable {
     let lock = NIOLock()
 }
 
-public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
+public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler, @unchecked Sendable {
     public typealias InboundIn = ByteBuffer
     public typealias InboundOut = HTTPResponse
     public typealias OutboundIn = HTTPRequest
@@ -255,18 +255,18 @@ public final class RequestHandler: ChannelDuplexHandler, @unchecked Sendable {
     }
     
     public func channelRegistered(context: ChannelHandlerContext) {
-        ioHandler?.connectionStart(context: context).flatMapErrorThrowing { err in
+        ioHandler?.connectionStart(context: context).whenFailure { err in
             self.errorHappend(context: context, error: err)
-        }.whenComplete { _ in }
+        }
     }
     
     public func channelUnregistered(context: ChannelHandlerContext) {
         self.progressPool[ObjectIdentifier(context.channel)] = nil
         ioHandler?.connectionEnd(context: context).flatMapThrowing {
             context.fireChannelInactive()
-        }.flatMapErrorThrowing { err in
+        }.whenFailure { err in
             self.errorHappend(context: context, error: err)
-        }.whenComplete { _ in }
+        }
     }
     
     func errorHappend(context: ChannelHandlerContext, error: Error) {
