@@ -14,7 +14,7 @@ extension APIReqClient {
     var apiRequestIoData: API.RequestIOData? { self.storage[API.RequestIOData.self] }
 }
 
-public enum API {
+enum API {
     final class RequestIOData: StorageKey, Sendable {
         typealias Value = RequestIOData
         let credential: String
@@ -29,26 +29,18 @@ public enum API {
         }
     }
     
-    enum Err: String, ErrList {
-        var domain: String { "woo.sys.api.reqclient.err" }
-        case requestParaMissing = "请求参数缺失"
-        case parseParaFailed = "解析请求参数时失败"
-        case internalError = "目标服务器发生错误"
-        case protocolInvalid = "交接机制发生错误"
-    }
-    
     struct RequestIOCrypto: RequestIOHandler, Sendable {
         unowned private(set) var client: APIReqClient
         let logger: Logger?
         
         /// 发送请求时，进行编码并加密
         func send(request: HTTPRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12006)) }
+            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12006)) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
                 logger?.trace("API.Client.HTTP-发送请求，进行加密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
-                if let key = ioData.connectionKeys[id] { 
+                if let key = ioData.connectionKeys[id] {
                     cipher = try Crypto.Symm.encrypt(dataChunk, key: key)
                 } else {
                     // 代表首次请求，直接发送明文
@@ -64,7 +56,7 @@ public enum API {
 
         /// 收到响应时，进行解密并解码
         func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(HTTPResponse?, ByteBuffer)> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12010)) }
+            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12010)) }
             let id = ObjectIdentifier(context.channel)
 
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
@@ -86,19 +78,19 @@ public enum API {
                 if let key = ioData.connectionKeys[id] {
                     plain = try Crypto.Symm.decrypt(.init(buffer: response), key: key)
                 } else {
-                    guard let token = Data(base64Encoded: ioData.token) else { throw Err.parseParaFailed.d("用户口令", 14005) }
+                    guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 14005).adds(.internalServerError) }
                     let tokenKey = Crypto.Symm.Key(data: token)
                     plain = try Crypto.Symm.decrypt(.init(buffer: response), key: tokenKey)
                 }
                 let plainStable = plain
                 return streamingHandle(
-                    chunkData: &plain, 
-                    context: context, 
+                    chunkData: &plain,
+                    context: context,
                     bufferStrategy: bufferStrategy,
                     dic: ioData.readingBufferDatas,
                     streaming: streaming
                 ).flatMapThrowing { data in
-                    if let d = data { return (try HTTPResponse(data: d), plainStable) } 
+                    if let d = data { return (try HTTPResponse(data: d), plainStable) }
                     else { return (nil, plainStable) }
                 }
             } catch let err {
@@ -126,11 +118,11 @@ public enum API {
                 let reason: String
             }
             do {
-                let reply = try Guard({ try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body)) }, throw: Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14012))
+                let reply = try Guard({ try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body)) }, throw: ApiClient.InternalErr.protocolInvalid.d("应当解析出 Error 信息，但失败", 14012))
                 if reply.error {
-                    return Err.internalError.d(reply.reason, 13001)
+                    return ApiClient.Err.unknowError.d(reply.reason, 13001).adds(.internalServerError)
                 } else {
-                    throw Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14011)
+                    throw ApiClient.InternalErr.protocolInvalid.d("应当解析出 Error 信息，但失败", 14011)
                 }
             } catch let err {
                 return err

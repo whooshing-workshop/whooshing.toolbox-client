@@ -73,7 +73,7 @@ fileprivate final class TempProgress: @unchecked Sendable {
         set { lock.withLock { _startDate = newValue } }
     }
 
-    private var _index: Int = 0
+    private var _index: Int = -1
     private var _curBytes: Int = 0
     private var _totalBytes: Int? = nil
     private var _startDate = Date()
@@ -108,7 +108,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
         guard let ioHandler = self.ioHandler else {  let res = try! HTTPResponse(data: buffer); promise.succeed(res); return }
         
         let streaming: Bool
-        if let bufferSuffix = buffer.readSlice(length: ChunkTool.eof.readableBytes) { streaming = bufferSuffix != ChunkTool.eof } 
+        if let bufferSuffix = buffer.readSlice(length: ChunkTool.eof.readableBytes) { streaming = bufferSuffix != ChunkTool.eof }
         else { streaming = true }
         if streaming { buffer.moveReaderIndex(to: 0) }
 
@@ -118,7 +118,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
             switch result {
             case .success(let response):
                 var isHeaders = false
-                if self.progressPool[id] == nil { 
+                if self.progressPool[id] == nil {
                     self.progressPool[id] = .init()
                     if let res = try? HTTPResponse(data: response.1) {
                         if let sizeStr = res.headers.first(name: "content-length"), let size = Int(sizeStr) {
@@ -134,7 +134,19 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
                     self.logger?.trace("ReqIOHandler.Read-正在从服务器流接收 流数据: \(context.channel.clientAddrInfo), 当前大小: \(tempProgress.curBytes), 总大小: \(tempProgress.totalBytes ?? -1)")
                 }
                 do {
-                    try self.progress(.init(index: tempProgress.index, data: response.1, done: !streaming, curBytes: tempProgress.curBytes, totalBytes: tempProgress.totalBytes, startDate: tempProgress.startDate, channel: context.channel, response: true))
+                    try self.progress(
+                        .init(
+                            index: tempProgress.index,
+                            data: response.1,
+                            done: !streaming,
+                            curBytes: tempProgress.curBytes,
+                            totalBytes: tempProgress.totalBytes,
+                            startDate: tempProgress.startDate,
+                            channel: context.channel,
+                            response: true
+                        )
+                    )
+                    tempProgress.index += 1
                     tempProgress.curBytes += response.1.readableBytes
                 } catch let err {
                     self.errorHappend(context: context, error: err)
@@ -161,11 +173,11 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
         guard let ioHandler = self.ioHandler else { context.writeAndFlush(data, promise: promise); return }
         let request = unwrapOutboundIn(data)
         let buffers: (ByteBuffer, ByteBuffer?)
-        do { 
-            buffers = try request.data(bufferAllocator: .init()) 
-        } catch let err { 
+        do {
+            buffers = try request.data(bufferAllocator: .init())
+        } catch let err {
             promise?.fail(err)
-            return 
+            return
         }
 
         let (headerBuffer, bodyBuffer) = buffers
@@ -178,7 +190,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
             // 将请求头单独先发出
             r = r.flatMap {
                 self.logger?.trace("ReqIOHandler.Write-正在向服务器流传输 流请求头: \(context.channel.clientAddrInfo), 总大小: \(totalSize)")
-                return send(chunk: headerBuffer, streaming: totalSize > 0, index: 0, curBytes: 0, totalSize: totalSize)
+                return send(chunk: headerBuffer, streaming: totalSize > 0, index: -1, curBytes: 0, totalSize: totalSize)
             }
 
             // stream 发送，需要从调用者不断读取块数据
@@ -195,20 +207,20 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
                     self.logger?.trace("ReqIOHandler.Write-正在向服务器流传输 流数据: \(context.channel.clientAddrInfo), 当前大小: \(currentSize), 下一次大小: \(nextSize), 总大小: \(totalSize)")
 
                     if isLast {
-                        let lastSize = currentSize + data.readableBytes 
+                        let lastSize = currentSize + data.readableBytes
                         guard lastSize == totalSize else {
                             return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("预期数据流的总大小应为 \(ChunkTool.formatByteSize(totalSize)), 但得到大小 \(ChunkTool.formatByteSize(lastSize))", 13031))
                         }
-                        return send(chunk: data, streaming: false, index: streamIndex + 1, curBytes: currentSize, totalSize: totalSize)
+                        return send(chunk: data, streaming: false, index: streamIndex, curBytes: currentSize, totalSize: totalSize)
                     }
-                    return send(chunk: data, streaming: true, index: streamIndex + 1, curBytes: currentSize, totalSize: totalSize).flatMap { sendData(streamIndex: streamIndex + 1, currentSize: nextSize) }
+                    return send(chunk: data, streaming: true, index: streamIndex, curBytes: currentSize, totalSize: totalSize).flatMap { sendData(streamIndex: streamIndex + 1, currentSize: nextSize) }
                 }
             }
         } else {
             // 将请求头单独先发出
             r = r.flatMap {
                 self.logger?.trace("ReqIOHandler.Write-正在向服务器流传输 块请求头: \(context.channel.clientAddrInfo), 总大小: \(bodyBuffer == nil ? -1 : bodyBuffer!.readableBytes)")
-                return send(chunk: headerBuffer, streaming: bodyBuffer != nil, index: 0, curBytes: 0, totalSize: bodyBuffer == nil ? 0 : bodyBuffer!.readableBytes )
+                return send(chunk: headerBuffer, streaming: bodyBuffer != nil, index: -1, curBytes: 0, totalSize: bodyBuffer == nil ? 0 : bodyBuffer!.readableBytes )
             }
 
             if var body = bodyBuffer {
@@ -247,9 +259,9 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
                 if !streaming {
                     var r = req
                     var eof = ChunkTool.eof
-                    return context.writeAndFlush(self.wrapOutboundOut(ChunkTool.concatenateBuffers(&eof, &r))) 
+                    return context.writeAndFlush(self.wrapOutboundOut(ChunkTool.concatenateBuffers(&eof, &r)))
                 }
-                return context.writeAndFlush(self.wrapOutboundOut(req)) 
+                return context.writeAndFlush(self.wrapOutboundOut(req))
             }
         }
     }

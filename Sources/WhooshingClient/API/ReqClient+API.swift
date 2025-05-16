@@ -10,17 +10,26 @@ import Foundation
 import Vapor
 #endif
 
-final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sendable {
-    typealias Value = APIReqClient
-
-    enum APIReqErr: String, ErrList {
-        var domain: String { "woo.sys.api.reqclient.err" }
-        case unknowSendError = "请求时发生未知的错误"
-        case requestParaMissing = "请求参数缺失"
+public extension ApiClient {
+    enum Err: String, ErrList {
+        public typealias ErrType = HTTPResponseError
+        public var domain: String { "woo.sys.api.reqclient.err" }
+        case parseParaFailed = "解析请求参数时失败"
         case badResponse = "响应状态码表示请求未成功"
         case authenticationBadProtocol = "认证时协议协商错误"
-        case parseParaFailed = "解析请求参数时失败"
+        case unknowError = "服务器错误"
     }
+    
+    enum InternalErr: String, ErrList {
+        public var domain: String { "woo.sys.api.reqclient.internal.err" }
+        case requestParaMissing = "请求参数缺失"
+        case protocolInvalid = "交接机制发生错误"
+        case unknowErr = "内部未知错误"
+    }
+}
+
+final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
+    typealias Value = APIReqClient
 
     static func new(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator) -> Self {
         let res = Self(eventLoop: eventLoop, logger: logger, byteBufferAllocator: byteBufferAllocator)
@@ -48,9 +57,7 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
                 } else {
                     self.logger?.info("API.Client-发送流式请求: \(channel.clientAddrInfo)")
                 }
-                return self._send(request: request, channel: channel, handler: handler, domain: domain, bufferStrategy: bufferStrategy, progress: progress).flatMapError { err in
-                    return channel.eventLoop.makeFailedFuture(err)
-                }.flatMap { res in
+                return self._send(request: request, channel: channel, handler: handler, domain: domain, bufferStrategy: bufferStrategy, progress: progress).flatMap { res in
                     afterSend(channel).map { res }
                 }
             } catch {
@@ -66,18 +73,16 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
     private func _send(request: HTTPRequest, channel: Channel, handler: RequestHandler, domain: String?, bufferStrategy: BufferStrategy, progress: @escaping @Sendable (ProgressContext<HTTPResponse?>) throws -> Void) -> EventLoopFuture<HTTPResponse?> {
         let id = ObjectIdentifier(channel)
         var r = eventLoop.makeSucceededVoidFuture()
-        guard let ioData = self.apiRequestIoData else { return eventLoop.makeFailedFuture(APIReqErr.requestParaMissing.d("apiRequestIoData", 12013)) }
+        guard let ioData = self.apiRequestIoData else { return eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12013)) }
         if ioData.connectionKeys[id] == nil {
             self.logger?.debug("正在与服务器进行认证: \(channel.clientAddrInfo)")
-            r = r.flatMap { 
+            r = r.flatMap {
                 self.authExchange(request: request, handler: handler, domain: domain, channel: channel)
             }
         }
         return r.flatMap{
             self.logger?.debug("正在与服务器发送具体的请求: \(channel.clientAddrInfo)")
             return self.send(request, channel: channel, handler: handler, bufferStrategy: bufferStrategy, progress: progress)
-        }.flatMapError { err in 
-            channel.eventLoop.makeFailedFuture(APIReqErr.unknowSendError.d(12012).subErr(err))
         }
     }
 
@@ -91,13 +96,13 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
         do {
             let ioData = self.apiRequestIoData!
             let id = ObjectIdentifier(channel)
-            guard let credential = Data(base64Encoded: ioData.credential) else { throw APIReqErr.parseParaFailed.d("用户凭据", 12007) }
+            guard let credential = Data(base64Encoded: ioData.credential) else { throw ApiClient.Err.parseParaFailed.d("用户凭据", 12007).adds(.internalServerError) }
             self.logger?.trace("API.Client-认证中: 使用用户口令加密用户口令本身")
-            guard let token = Data(base64Encoded: ioData.token) else { throw APIReqErr.parseParaFailed.d("用户口令", 12008) }
+            guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 12008).adds(.internalServerError) }
             let tokenKey = Crypto.Symm.Key(data: token)
             let tokenEncrypted = try Crypto.Symm.encrypt(token, key: tokenKey)
             self.logger?.trace("API.Client-认证中: 将凭据和加密后的用户口令进行 json 编码")
-            guard let body = try? JSONEncoder().encode(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)) else { return eventLoop.makeFailedFuture(APIReqErr.unknowSendError.d("JSON 编码失败", 14001)) }
+            guard let body = try? JSONEncoder().encode(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)) else { return eventLoop.makeFailedFuture(ApiClient.InternalErr.unknowErr.d("JSON 编码失败", 14001)) }
             self.logger?.trace("API.Client-认证中: 发送用户凭据以及用户口令")
             var headers: HTTPHeaders = ["content-type": "application/json"]
             if let domain = domain {
@@ -107,10 +112,10 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
                 // 此处一定有响应，因为 bufferStrategy 是 .collect
                 let res = res!
                 self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
-                guard res.status == .ok else { throw APIReqErr.badResponse.d(14002) }
+                guard res.status == .ok else { throw ApiClient.Err.badResponse.d(14002).adds(res.status) }
                 // 当向认证模块发送认证请求之后，应当得到一个使用用户口令加密的新密钥，并使用该新密钥进行后续的通讯加密
                 self.logger?.trace("API.Client-正在完成认证: 解析服务器的新密钥")
-                guard let token = Data(base64Encoded: ioData.token) else { throw APIReqErr.parseParaFailed.d("用户口令", 14003) }
+                guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 14003).adds(.internalServerError) }
                 let tokenKey = Crypto.Symm.Key(data: token)
                 self.logger?.trace("API.Client-正在完成认证: 获取对方发来的加密新密钥")
                 let keyEncrypted = try res.jsonBodyDecode(JSONData.self).data
@@ -120,7 +125,11 @@ final class APIReqClient: ReqClient, StorageKey, WhooshingClient, @unchecked Sen
                 ioData.connectionKeys[id] = newKey
             }
         } catch let err {
-            return channel.eventLoop.makeFailedFuture(err)
+            if let err = err as? HTTPResponseError {
+                return channel.eventLoop.makeFailedFuture(err)
+            } else {
+                return channel.eventLoop.makeFailedFuture(ApiClient.Err.unknowError.d(15022).subErr(err).adds(.internalServerError))
+            }
         }
     }
 

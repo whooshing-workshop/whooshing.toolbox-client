@@ -49,6 +49,10 @@ public typealias AsyncStreamingDataAction = @Sendable (_ request: HTTPRequest, _
 /// 客户端协议，定义了与服务器交互的各种方法
 public protocol WhooshingClient: AnyObject,Sendable {
     
+    var key: Crypto.Symm.Key? { get }
+    var channel: (any Channel)? { get }
+    var mainHandler: (RemovableChannelHandler & Sendable)? { get }
+    
     // MARK: - 同步请求方法
     func get(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
     func post(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
@@ -221,7 +225,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认不做任何操作
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 服务器响应结果
@@ -249,7 +254,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认不做任何操作
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 服务器响应结果
@@ -278,7 +284,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认不做任何操作
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 服务器响应结果
@@ -725,7 +732,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认为defaultAfterSend
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 包含响应结果的EventLoopFuture
@@ -749,7 +757,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认为defaultAfterSend
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 包含响应结果的EventLoopFuture
@@ -771,7 +780,8 @@ public extension WhooshingClient {
     /// - Parameters:
     ///   - url: 目标WebURI，格式为 `WebURI`
     ///   - headers: HTTP头字段，默认为空字典
-    ///   - content: 遵循Content协议的可编码内容
+    ///   - content: 请求体的数据内容，类型为 type 参数所定义
+    ///   - type: 定义请求体的数据类型，见 ``HTTPBody.Encode``
     ///   - afterSend: 请求发送后的回调闭包，默认为defaultAfterSend
     ///   - progress: 进度回调闭包，默认不做任何操作
     /// - Returns: 包含响应结果的EventLoopFuture

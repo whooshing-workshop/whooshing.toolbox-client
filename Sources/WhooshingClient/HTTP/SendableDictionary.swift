@@ -24,8 +24,14 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
         lock.withLock { wrapped.values }
     }
     
+    /// 是否为空
     public var isEmpty: Bool {
         lock.withLock { wrapped.isEmpty }
+    }
+    
+    /// 返回当前键值对数量
+    public var count: Int {
+        lock.withLock { wrapped.count }
     }
 
     private var wrapped: [Key: Value]

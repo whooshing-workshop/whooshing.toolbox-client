@@ -23,11 +23,16 @@ public final class ApiClient: Sendable {
         return key
     }
     
+    /// 当前正在进行的请求所在的 TCP NIO Channel
     public weak var channel: (any Channel)? { client.channel }
+    /// 用于处理请求的主要 Handler，见 ``RequestHandler``
     public weak var mainHandler: (RemovableChannelHandler & Sendable)? { client.mainHandler }
+    /// 日志系统
+    public var logger: Logger? { client.logger }
+    /// 主要的 EventLoop
+    public var eventLoop: EventLoop { client.eventLoop }
     
     private let client: APIReqClient
-
     private let allocator = ByteBufferAllocator()
     
     /// 使用指定的事件循环和日志器初始化 API 客户端。
@@ -58,7 +63,8 @@ public final class ApiClient: Sendable {
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
     }
     #endif
-
+    
+    /// 关闭所有正在进行的连线
     public func closeAll() async {
         await client.closeAll()
     }
@@ -71,6 +77,7 @@ public final class ApiClient: Sendable {
     }
 }
 
+/// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
     public func send(
         _ method: HTTPMethod,
