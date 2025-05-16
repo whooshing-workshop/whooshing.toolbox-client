@@ -1003,7 +1003,7 @@ public extension WhooshingClient {
                     let fileName = filePath.lastComponent?.string,
                     let info = try await FileSystem.shared.info(forFileAt: filePath)
                 else {
-                    throw WSMClientErr.fileInfoGetFailed.d(14034, #file, #line)
+                    throw WSMClientErr.fileInfoGetFailed.d(14034)
                 }
                 
                 // 2. 创建分块迭代器（每块最大ChunkTool.maxChunk字节）
@@ -1022,7 +1022,7 @@ public extension WhooshingClient {
                     bodySize: Int(info.size),
                     stream: { request, channel, maxChunk, currentIndex in
                         guard let data = try await chunkIterator.next() else {
-                            throw WSMClientErr.fileOperationUnknowErr.d("未成功读出数据", 14035, (#file, #line))
+                            throw WSMClientErr.fileOperationUnknowErr.d("未成功读出数据", 14035)
                         }
                         return data
                     },
@@ -1036,7 +1036,7 @@ public extension WhooshingClient {
             } catch {
                 // 5. 异常时确保关闭文件
                 try await fileHandle.close()
-                throw WSMClientErr.fileOperationUnknowErr.d(14033, #file, #line).subErr(error)
+                throw WSMClientErr.fileOperationUnknowErr.d(14033).subErr(error)
             }
         }
     }

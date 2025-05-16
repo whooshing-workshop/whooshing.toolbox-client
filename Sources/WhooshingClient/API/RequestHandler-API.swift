@@ -43,7 +43,7 @@ public enum API {
         
         /// 发送请求时，进行编码并加密
         func send(request: HTTPRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12006, (#file, #line))) }
+            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12006)) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
@@ -64,7 +64,7 @@ public enum API {
 
         /// 收到响应时，进行解密并解码
         func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(HTTPResponse?, ByteBuffer)> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12010, (#file, #line))) }
+            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(Err.requestParaMissing.d("apiRequestIoData", 12010)) }
             let id = ObjectIdentifier(context.channel)
 
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
@@ -86,7 +86,7 @@ public enum API {
                 if let key = ioData.connectionKeys[id] {
                     plain = try Crypto.Symm.decrypt(.init(buffer: response), key: key)
                 } else {
-                    guard let token = Data(base64Encoded: ioData.token) else { throw Err.parseParaFailed.d("用户口令", 14005, (#file, #line)) }
+                    guard let token = Data(base64Encoded: ioData.token) else { throw Err.parseParaFailed.d("用户口令", 14005) }
                     let tokenKey = Crypto.Symm.Key(data: token)
                     plain = try Crypto.Symm.decrypt(.init(buffer: response), key: tokenKey)
                 }
@@ -126,11 +126,11 @@ public enum API {
                 let reason: String
             }
             do {
-                let reply = try Guard({ try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body)) }, throw: Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14012, (#file, #line)))
+                let reply = try Guard({ try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body)) }, throw: Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14012))
                 if reply.error {
-                    return Err.internalError.d(reply.reason, 13001, (#file, #line))
+                    return Err.internalError.d(reply.reason, 13001)
                 } else {
-                    throw Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14011, (#file, #line))
+                    throw Err.protocolInvalid.d("应当解析出 Error 信息，但失败", 14011)
                 }
             } catch let err {
                 return err

@@ -187,7 +187,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
             @Sendable func sendData(streamIndex: Int, currentSize: Int) -> EventLoopFuture<Void> {
                 action(request, context.channel, ChunkTool.maxChunk, streamIndex).flatMap { data in
                     guard ChunkTool.isProperSize(bytes: data.readableBytes) else {
-                        return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("不应当超过 \(ChunkTool.maxChunkStr), 但得到大小 \(ChunkTool.formatByteSize(data.readableBytes))", 13030, (#file, #line)))
+                        return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("不应当超过 \(ChunkTool.maxChunkStr), 但得到大小 \(ChunkTool.formatByteSize(data.readableBytes))", 13030))
                     }
                     let nextSize = currentSize + data.readableBytes
                     let isLast = nextSize >= totalSize
@@ -197,7 +197,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
                     if isLast {
                         let lastSize = currentSize + data.readableBytes 
                         guard lastSize == totalSize else {
-                            return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("预期数据流的总大小应为 \(ChunkTool.formatByteSize(totalSize)), 但得到大小 \(ChunkTool.formatByteSize(lastSize))", 13031, (#file, #line)))
+                            return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("预期数据流的总大小应为 \(ChunkTool.formatByteSize(totalSize)), 但得到大小 \(ChunkTool.formatByteSize(lastSize))", 13031))
                         }
                         return send(chunk: data, streaming: false, index: streamIndex + 1, curBytes: currentSize, totalSize: totalSize)
                     }

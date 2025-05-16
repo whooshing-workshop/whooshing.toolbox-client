@@ -24,19 +24,19 @@ public extension BodyCodable {
             self.body = buffer
             self.headers.replaceOrAdd(name: "content-type", value: "application/json")
         } catch {
-            throw BodyCodableErr.bodyEncodeFailed.d(14085, (#file, #line)).subErr(error)
+            throw BodyCodableErr.bodyEncodeFailed.d(14085).subErr(error)
         }
     }
     
     func jsonBodyDecode<T: Decodable>(_ type: T.Type) throws -> T {
         guard let body = body else {
-            throw BodyCodableErr.bodyDecodeFailed.d("响应体不存在", 14083, (#file, #line))
+            throw BodyCodableErr.bodyDecodeFailed.d("响应体不存在", 14083)
         }
         
         do {
             return try JSONDecoder().decode(T.self, from: body)
         } catch {
-            throw BodyCodableErr.bodyDecodeFailed.d(14084, (#file, #line)).subErr(error)
+            throw BodyCodableErr.bodyDecodeFailed.d(14084).subErr(error)
         }
     }
 }

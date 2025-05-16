@@ -63,7 +63,7 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
             let scheme = Scheme(rawValue: schemeStr),
             let host = url.host
         else {
-            throw Err.parseFailed.d("所提供的 URI 不合法 (\(string))", 14080, (#file, #line))
+            throw Err.parseFailed.d("所提供的 URI 不合法 (\(string))", 14080)
         }
         
         self.scheme = scheme
