@@ -103,15 +103,16 @@ open class ReqClient: @unchecked Sendable {
         handler.progress = { prog in
             if prog.response {
                 if self.headerPool[id] == nil {
-                    print(String(buffer: prog.data))
                     self.headerPool[id] = try Guard( { try .init(data: prog.data) }, throw: Err.requestParseFailed.d(14010))
                 }
                 let header = self.headerPool[id]!
                 try progress(prog.copy(value: header))
+                if prog.done {
+                    self.headerPool[id] = nil
+                }
                 return
             }
             try progress(prog.copy(value: nil))
-            if prog.done { self.headerPool[id] = nil }
         }
         return channel.writeAndFlush(client).flatMapError { err in
             self.logger?.warning("\(err)")
@@ -127,7 +128,6 @@ open class ReqClient: @unchecked Sendable {
     public func closeAll() async {
         for (_, channel) in channelPool {
             try? await channel.close(mode: .all)
-            print("连接关闭")
         }
         channelPool.removeAll()
     }

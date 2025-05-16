@@ -2,10 +2,13 @@ import NIOCore
 import ErrorHandle
 import Foundation
 import NIOHTTP1
+import DataConvertable
 
 public protocol BodyCodable {
     var body: ByteBuffer? { get set }
     var headers: HTTPHeaders { get set }
+    mutating func bodyEncode<T: HTTPBody.Encode>(_ value: T.EValue, as bodyType: T.Type) throws
+    func bodyDecode<T: HTTPBody.Decode>(to type: T.Type) throws -> T.DValue
     mutating func jsonBodyEncode<T: Encodable>(_ value: T) throws
     func jsonBodyDecode<T: Decodable>(_ type: T.Type) throws -> T
 }
@@ -17,26 +20,33 @@ public enum BodyCodableErr: String, ErrList {
 }
 
 public extension BodyCodable {
-    mutating func jsonBodyEncode<T: Encodable>(_ value: T) throws {
+    mutating func bodyEncode<T: HTTPBody.Encode>(_ value: T.EValue, as bodyType: T.Type) throws {
         do {
-            var buffer = ByteBuffer()
-            try JSONEncoder().encode(value, into: &buffer)
+            let buffer = try T.encode(data: value)
             self.body = buffer
-            self.headers.replaceOrAdd(name: "content-type", value: "application/json")
+            self.headers.replaceOrAdd(name: "content-type", value: T.name)
+            self.headers.replaceOrAdd(name: "content-length", value: String(buffer.readableBytes))
         } catch {
             throw BodyCodableErr.bodyEncodeFailed.d(14085).subErr(error)
         }
     }
     
-    func jsonBodyDecode<T: Decodable>(_ type: T.Type) throws -> T {
+    func bodyDecode<T: HTTPBody.Decode>(to type: T.Type) throws -> T.DValue {
         guard let body = body else {
             throw BodyCodableErr.bodyDecodeFailed.d("响应体不存在", 14083)
         }
-        
         do {
-            return try JSONDecoder().decode(T.self, from: body)
+            return try T.decode(data: body)
         } catch {
             throw BodyCodableErr.bodyDecodeFailed.d(14084).subErr(error)
         }
+    }
+    
+    mutating func jsonBodyEncode<T: Encodable>(_ value: T) throws {
+        try bodyEncode(value, as: HTTPBody.jsonEncode(T.self))
+    }
+    
+    func jsonBodyDecode<T: Decodable>(_ type: T.Type) throws -> T {
+        try bodyDecode(to: HTTPBody.jsonDecode(T.self))
     }
 }

@@ -25,7 +25,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     
     /// 请求的字符串描述，包含请求行、头部和正文，用于日志或调试输出。
     public var description: String {
-        let requestLine = "\(method.rawValue) \(url.path) HTTP/\(version.major).\(version.minor)\r\n"
+        let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
         
         var headerLines = headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
         if !headerLines.isEmpty { headerLines += "\r\n" }
@@ -48,7 +48,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     /// - Throws: 若转换过程中出现错误，可能抛出异常。
     public func data(bufferAllocator: ByteBufferAllocator = .init()) throws -> (ByteBuffer, ByteBuffer?) {
         var buffer = bufferAllocator.buffer(capacity: 0)
-        let requestLine = "\(method.rawValue) \(url.path) HTTP/\(version.major).\(version.minor)\r\n"
+        let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
         buffer.writeString(requestLine)
         headers.forEach { (name, value) in buffer.writeString("\(name): \(value)\r\n") }
         buffer.writeString("\r\n")

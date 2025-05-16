@@ -47,7 +47,7 @@ public typealias AsyncAfterSendAction =  @Sendable (_ channel: Channel) -> Event
 public typealias AsyncStreamingDataAction = @Sendable (_ request: HTTPRequest, _ channel: Channel, _ maxChunk: Int, _ currentIndex: Int) -> EventLoopFuture<ByteBuffer>
 
 /// 客户端协议，定义了与服务器交互的各种方法
-public protocol WhooshingClient: Sendable {
+public protocol WhooshingClient: AnyObject,Sendable {
     
     // MARK: - 同步请求方法
     func get(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
@@ -56,9 +56,9 @@ public protocol WhooshingClient: Sendable {
     func put(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
     func delete(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
     func send(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
-    func post<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T: Encodable & Sendable
-    func patch<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T: Encodable & Sendable
-    func put<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T: Encodable & Sendable
+    func post<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T.EValue: Sendable
+    func patch<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T.EValue: Sendable
+    func put<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T.EValue: Sendable
 
     // MARK: - 同步流式请求方法
     func streamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
@@ -79,9 +79,9 @@ public protocol WhooshingClient: Sendable {
     @Sendable func asyncPut(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
     @Sendable func asyncDelete(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
     @Sendable func asyncSend(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
-    @Sendable func asyncPost<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable
-    @Sendable func asyncPatch<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable
-    @Sendable func asyncPut<T>(_ url: WebURI, headers: HTTPHeaders, content: T, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable
+    @Sendable func asyncPost<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable
+    @Sendable func asyncPatch<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable
+    @Sendable func asyncPut<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable
     
     // MARK: - 异步流式请求方法
     @Sendable func asyncStreamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
@@ -234,14 +234,15 @@ public extension WhooshingClient {
     /// - 注意事项：
     ///   - 类型参数T必须遵循Content协议
     ///   - 进度回调包含请求头和内容的编码进度
-    func post<T>(
+    func post<T: HTTPBody.Encode>(
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws -> HTTPResponse where T: Encodable & Sendable {
-        try await reflect(url, headers, content, afterSend, progress, to: asyncPost)
+    ) async throws -> HTTPResponse where T.EValue: Sendable {
+        try await reflect(url, headers, content, type, afterSend, progress, to: asyncPost)
     }
 
     /// 发送带内容的PATCH请求（默认参数实现）
@@ -262,14 +263,15 @@ public extension WhooshingClient {
     ///   - 部分更新资源内容
     /// - 注意事项：
     ///   - 与POST请求的区别在于语义而非实现
-    func patch<T>(
+    func patch<T: HTTPBody.Encode>(
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws -> HTTPResponse where T: Encodable & Sendable {
-        try await reflect(url, headers, content, afterSend, progress, to: asyncPatch)
+    ) async throws -> HTTPResponse where T.EValue: Sendable {
+        try await reflect(url, headers, content, type, afterSend, progress, to: asyncPatch)
     }
 
     /// 发送带内容的PUT请求（默认参数实现）
@@ -290,25 +292,27 @@ public extension WhooshingClient {
     ///   - 完全替换资源内容
     /// - 注意事项：
     ///   - 与POST请求的区别在于语义（幂等性）
-    func put<T>(
+    func put<T: HTTPBody.Encode>(
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws -> HTTPResponse where T: Encodable & Sendable {
-        try await reflect(url, headers, content, afterSend, progress, to: asyncPut)
+    ) async throws -> HTTPResponse where T.EValue: Sendable {
+        try await reflect(url, headers, content, type, afterSend, progress, to: asyncPut)
     }
 
-    private func reflect<T>(
+    private func reflect<T: HTTPBody.Encode>(
         _ url: WebURI,
         _ headers: HTTPHeaders,
-        _ content: T,
+        _ content: T.EValue,
+        _ type: T.Type,
         _ afterSend: @escaping AfterSendAction,
         _ progress: @escaping ProgressAction,
-        to: (WebURI, HTTPHeaders, T, @escaping AsyncAfterSendAction, @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
-    ) async throws -> HTTPResponse where T: Encodable & Sendable {
-        try await to(url, headers, content, { b in b.eventLoop.makeFutureWithTask { try await afterSend(b) } }, progress).get()
+        to: (WebURI, HTTPHeaders, T.EValue, T.Type, @escaping AsyncAfterSendAction, @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    ) async throws -> HTTPResponse where T.EValue: Sendable {
+        try await to(url, headers, content, type, { b in b.eventLoop.makeFutureWithTask { try await afterSend(b) } }, progress).get()
     }
 }
 
@@ -730,14 +734,15 @@ public extension WhooshingClient {
     ///   2. 调用基础异步POST方法发送请求
     /// - 注意事项：
     ///   - 类型参数T必须遵循Content协议
-    @Sendable func asyncPost<T>(
+    @Sendable func asyncPost<T: HTTPBody.Encode>(
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable {
-        self.asyncPost(url, headers: headers, beforeSend: { req, _ in try req.jsonBodyEncode(content) }, afterSend: afterSend, progress: progress)
+    ) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable {
+        self.asyncPost(url, headers: headers, beforeSend: { req, _ in try req.bodyEncode(content, as: type) }, afterSend: afterSend, progress: progress)
     }
 
     /// 异步发送带内容的PATCH请求（默认参数实现）
@@ -751,14 +756,15 @@ public extension WhooshingClient {
     /// - 实现机制：
     ///   1. 在beforeSend闭包中自动执行内容编码
     ///   2. 调用基础异步PATCH方法发送请求
-    @Sendable func asyncPatch<T>(
+    @Sendable func asyncPatch<T: HTTPBody.Encode>(
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable {
-        return self.asyncPatch(url, headers: headers, beforeSend: { req, _ in try req.jsonBodyEncode(content) }, afterSend: afterSend, progress: progress)
+    ) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable {
+        return self.asyncPatch(url, headers: headers, beforeSend: { req, _ in try req.bodyEncode(content, as: type) }, afterSend: afterSend, progress: progress)
     }
 
     /// 异步发送带内容的PUT请求（默认参数实现）
@@ -772,14 +778,15 @@ public extension WhooshingClient {
     /// - 实现机制：
     ///   1. 在beforeSend闭包中自动执行内容编码
     ///   2. 调用基础异步PUT方法发送请求
-    @Sendable func asyncPut<T>(
+    @Sendable func asyncPut<T: HTTPBody.Encode> (
         _ url: WebURI,
         headers: HTTPHeaders = [:],
-        content: T,
+        content: T.EValue,
+        type: T.Type,
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<HTTPResponse> where T: Encodable & Sendable {
-        return self.asyncPut(url, headers: headers, beforeSend: { req, _ in try req.jsonBodyEncode(content) }, afterSend: afterSend, progress: progress)
+    ) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable {
+        return self.asyncPut(url, headers: headers, beforeSend: { req, _ in try req.bodyEncode(content, as: type) }, afterSend: afterSend, progress: progress)
     }
 }
 
@@ -1015,10 +1022,10 @@ public extension WhooshingClient {
                 )
                 
                 // 3. 执行流式上传
-                try await streamSend(
+                try await self.streamSend(
                     method,
                     to: url,
-                    headers: ["Content-Disposition": fileName],
+                    headers: ["content-disposition": fileName],
                     bodySize: Int(info.size),
                     stream: { request, channel, maxChunk, currentIndex in
                         guard let data = try await chunkIterator.next() else {

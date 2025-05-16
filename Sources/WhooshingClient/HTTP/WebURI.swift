@@ -38,6 +38,8 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
     /// 该值可能是从原始字符串初始化时保留的，也可能由结构体各字段拼接生成。
     /// 通常用于输出、日志、URL 请求构造等场景。
     public let string: String
+    /// 表示放在 HTTP Request 中的 Path + Query 路径
+    public let queryPath: String
     
     /// WebURI 的字符串描述，等价于其完整字符串形式。
     public var description: String { string }
@@ -72,7 +74,8 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         self.path = url.path.isEmpty ? "/" : url.path
         self.query = url.query
         self.fragment = url.fragment
-        self.string = string
+        self.string = Self.combineURI(scheme: scheme, host: host, port: self.port, path: self.path, query: self.query, fragment: self.fragment)
+        self.queryPath = (url.path + (url.query == nil ? "" : "?\(url.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
     }
     
     /// 根据各个组成部分构造 WebURI。
@@ -93,8 +96,8 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         fragment: String? = nil
     ) {
         let q = query.map { key, value in
-            let encodedKey = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
-            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+            let encodedKey = key
+            let encodedValue = value
             return "\(encodedKey)=\(encodedValue)"
         }.joined(separator: "&")
         
@@ -118,24 +121,16 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         query: String? = nil,
         fragment: String? = nil
     ) {
-        let q = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-        
-        let p = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
         
         self.scheme = scheme
         self.host = host
         self.port = port
-        self.path = (p == nil || p!.isEmpty) ? "/" : p!
-        self.query = (q == nil || q!.isEmpty) ? nil : q!
-        self.fragment = fragment?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        self.path = path.isEmpty ? "/" : path
+        self.query = (query == nil || query!.isEmpty) ? nil : query!
+        self.fragment = fragment
         
-        var res = "\(scheme)://\(host)"
-        if let port = port { res += ":\(port)" }
-        res += "\(path)"
-        if let q = self.query { res += "?\(q)" }
-        if let fragment = fragment { res += "#\(fragment)" }
-        
-        self.string = res
+        self.string = Self.combineURI(scheme: scheme, host: host, port: port, path: path, query: self.query, fragment: fragment)
+        self.queryPath = (path + (self.query == nil ? "" : "?\(self.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
     }
     
     /// URI 解析过程中可能抛出的错误类型。
@@ -158,6 +153,15 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
             }
             return true
         }
+    }
+    
+    private static func combineURI(scheme: Scheme, host: String, port: Int?, path: String, query: String?, fragment: String?) -> String {
+        var res = "\(scheme)://\(host)"
+        if let port = port { res += ":\(port)" }
+        res += "\(path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "/")"
+        if let q = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { res += "?\(q)" }
+        if let fragment = fragment?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { res += "#\(fragment)" }
+        return res
     }
 }
 

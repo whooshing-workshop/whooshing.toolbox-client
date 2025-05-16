@@ -16,6 +16,18 @@ struct WebURITests {
         #expect(uri.fragment == "frag")
         #expect(uri.string == "https://example.com:8443/path?foo=bar#frag")
     }
+    
+    @Test("stringLiteral 转义测试")
+    func literalQueryTest() {
+        let uri: WebURI = "https://example.com:8443/path testing?foo=hello world!&name=chenlin wang#frag testing"
+        #expect(uri.scheme == .https)
+        #expect(uri.host == "example.com")
+        #expect(uri.port == 8443)
+        #expect(uri.path == "/path testing")
+        #expect(uri.query == "foo=hello world!&name=chenlin wang")
+        #expect(uri.fragment == "frag testing")
+        #expect(uri.string == "https://example.com:8443/path%20testing?foo=hello%20world!&name=chenlin%20wang#frag%20testing")
+    }
 
     @Test("使用 URL 字符串初始化失败")
     func testInvalidURLInit() {
@@ -42,6 +54,30 @@ struct WebURITests {
         #expect(uri.string.contains("http://host.test:1234/api") == true)
         #expect(uri.string.contains("?") == true)
         #expect(uri.string.contains("#footer") == true)
+    }
+    
+    @Test("使用参数构造 URI 转义测试")
+    func testInitWithComponentsQueryTest() {
+        let uri = WebURI(
+            scheme: .http,
+            host: "host.test",
+            port: 1234,
+            path: "/api testing",
+            query: ["k1 array": "v1 v2 v3", "k2 array": "v2 v4 v6"],
+            fragment: "footer testing"
+        )
+        #expect(uri.scheme == .http)
+        #expect(uri.host == "host.test")
+        #expect(uri.port == 1234)
+        #expect(uri.path == "/api testing")
+        #expect(uri.query?.contains("k1 array=v1 v2 v3") == true)
+        #expect(uri.query?.contains("k2 array=v2 v4 v6") == true)
+        #expect(uri.fragment == "footer testing")
+        #expect(uri.string.contains("http://host.test:1234/api%20testing") == true)
+        #expect(uri.string.contains("k1%20array=v1%20v2%20v3") == true)
+        #expect(uri.string.contains("k2%20array=v2%20v4%20v6") == true)
+        #expect(uri.string.contains("?") == true)
+        #expect(uri.string.contains("#footer%20testing") == true)
     }
 
     @Test("空 path 应默认变为 /")

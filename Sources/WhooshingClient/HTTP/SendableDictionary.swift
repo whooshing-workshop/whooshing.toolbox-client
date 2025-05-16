@@ -23,6 +23,10 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     public var allValue: [Key: Value].Values {
         lock.withLock { wrapped.values }
     }
+    
+    public var isEmpty: Bool {
+        lock.withLock { wrapped.isEmpty }
+    }
 
     private var wrapped: [Key: Value]
     private let lock = NIOLock()
@@ -41,13 +45,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     /// - Returns: 与该键对应的值，若不存在则为 `nil`。
     public subscript(key: Key) -> Value? {
         get { lock.withLock { wrapped[key] } }
-        set {
-            if let v = newValue {
-                lock.withLock { wrapped[key] = v }
-            } else {
-                lock.withLock { _ = wrapped.removeValue(forKey: key) }
-            }
-        }
+        set { lock.withLock { wrapped[key] = newValue } }
     }
 
     /// 遍历所有键值对，提供线程安全的 `forEach` 实现。
@@ -60,7 +58,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     }
 
     /// 支持 for in 遍历字典键值对
-    /// 
+    ///
     /// for (key, value) in sendableDic {
     ///     .........
     /// }
