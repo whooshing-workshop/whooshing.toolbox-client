@@ -88,8 +88,8 @@ open class ReqClient: @unchecked Sendable {
         handler: RequestHandler,
         bufferStrategy: BufferStrategy,
         progress: @escaping ProgressAction
-    ) -> EventLoopFuture<HTTPResponse?> {
-        let promise = channel.eventLoop.makePromise(of: HTTPResponse?.self)
+    ) -> EventLoopFuture<HTTPResponse> {
+        let promise = channel.eventLoop.makePromise(of: HTTPResponse.self)
         let id = ObjectIdentifier(channel)
         var client = c
         if case let .streaming(totalSize, _) = bufferStrategy {

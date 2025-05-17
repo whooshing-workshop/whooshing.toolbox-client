@@ -53,7 +53,7 @@ public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Va
     public let startDate: Date
 
     /// 与该任务关联的通道（如网络连接、文件流等）。
-    public private(set) unowned var channel: Channel
+    public private(set) weak var channel: Channel?
 
     /// 与该进度上下文相关联的用户自定义响应值。
     public let response: Value
@@ -119,5 +119,9 @@ public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Va
     /// - Returns: 新的 `ProgressContext`，除了 `response` 外其他内容与当前实例相同。
     public func copy<T>(value: T) -> ProgressContext<T> {
         .init(index: index, data: data, done: done, curBytes: curBytes, totalBytes: totalBytes, startDate: startDate, channel: channel, response: value)
+    }
+    
+    public func next(_ data: ByteBuffer, done: Bool = false) -> Self {
+        .init(index: index + 1, data: data, done: done, curBytes: curBytes + data.readableBytes, totalBytes: totalBytes, startDate: startDate, channel: channel, response: response)
     }
 }

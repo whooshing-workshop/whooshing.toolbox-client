@@ -13,7 +13,7 @@ import Vapor
 /// - Parameters:
 ///   - request: 可变的客户端请求对象，用于修改请求内容
 ///   - channel: 用于发送请求的通道
-public typealias BeforeSendAction = @Sendable (_ request: inout HTTPRequest, _ channel: Channel) throws -> ()
+public typealias BeforeSendAction = @Sendable (_ request: inout HTTPRequest, _ channel: Channel?) throws -> ()
 
 /// 定义在发送请求后执行的操作闭包
 /// - Parameter channel: 用于发送请求的通道
@@ -26,11 +26,10 @@ public typealias ProgressAction = @Sendable (_ progress: ProgressContext<HTTPRes
 /// 定义流式数据操作的闭包
 /// - Parameters:
 ///   - request: 客户端请求对象
-///   - channel: 用于发送请求的通道
 ///   - maxChunk: 最大数据块大小
 ///   - currentIndex: 当前数据块的索引
 /// - Returns: 返回要发送的数据块
-public typealias StreamingDataAction = @Sendable (_ request: HTTPRequest, _ channel: Channel, _ maxChunk: Int, _ currentIndex: Int) async throws -> ByteBuffer
+public typealias StreamingDataAction = @Sendable (_ request: HTTPRequest, _ maxChunk: Int, _ currentIndex: Int) async throws -> ByteBuffer
 
 /// 定义异步在发送请求后执行的操作闭包
 /// - Parameter channel: 用于发送请求的通道
@@ -40,11 +39,11 @@ public typealias AsyncAfterSendAction =  @Sendable (_ channel: Channel) -> Event
 /// 定义异步流式数据操作的闭包
 /// - Parameters:
 ///   - request: 客户端请求对象
-///   - channel: 用于发送请求的通道
+///   - eventLoop: 用于发送请求的 eventloop
 ///   - maxChunk: 最大数据块大小
 ///   - currentIndex: 当前数据块的索引
 /// - Returns: 返回一个EventLoopFuture，包含要发送的数据块
-public typealias AsyncStreamingDataAction = @Sendable (_ request: HTTPRequest, _ channel: Channel, _ maxChunk: Int, _ currentIndex: Int) -> EventLoopFuture<ByteBuffer>
+public typealias AsyncStreamingDataAction = @Sendable (_ request: HTTPRequest, _ eventLoop: EventLoop, _ maxChunk: Int, _ currentIndex: Int) -> EventLoopFuture<ByteBuffer>
 
 /// 客户端协议，定义了与服务器交互的各种方法
 public protocol WhooshingClient: AnyObject,Sendable {
@@ -65,16 +64,16 @@ public protocol WhooshingClient: AnyObject,Sendable {
     func put<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse where T.EValue: Sendable
 
     // MARK: - 同步流式请求方法
-    func streamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func streamPatch(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func streamPut(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func streamSend(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
+    func streamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func streamPatch(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func streamPut(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func streamSend(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping StreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
     
     // MARK: - 同步文件上传方法
-    func filePost(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func filePatch(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func filePut(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
-    func fileSend(_ method: HTTPMethod, to url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws
+    func filePost(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func filePatch(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func filePut(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
+    func fileSend(_ method: HTTPMethod, to url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AfterSendAction, progress: @escaping ProgressAction) async throws -> HTTPResponse
 
     // MARK: - 异步请求方法
     @Sendable func asyncGet(_ url: WebURI, headers: HTTPHeaders, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
@@ -88,16 +87,16 @@ public protocol WhooshingClient: AnyObject,Sendable {
     @Sendable func asyncPut<T: HTTPBody.Encode>(_ url: WebURI, headers: HTTPHeaders, content: T.EValue, type: T.Type, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> where T.EValue: Sendable
     
     // MARK: - 异步流式请求方法
-    @Sendable func asyncStreamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncStreamPatch(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncStreamPut(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncStreamSend(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
+    @Sendable func asyncStreamPost(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncStreamPatch(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncStreamPut(_ url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncStreamSend(_ method: HTTPMethod, to url: WebURI, headers: HTTPHeaders, bodySize: Int, stream: @escaping AsyncStreamingDataAction, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
 
     // MARK: - 异步文件上传方法
-    @Sendable func asyncFilePost(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncFilePatch(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncFilePut(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
-    @Sendable func asyncFileSend(_ method: HTTPMethod, to url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<Void>
+    @Sendable func asyncFilePost(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncFilePatch(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncFilePut(_ url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
+    @Sendable func asyncFileSend(_ method: HTTPMethod, to url: WebURI, file: String, beforeSend: @escaping BeforeSendAction, afterSend: @escaping AsyncAfterSendAction, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse>
 
     // MARK: - 核心实现
     
@@ -116,7 +115,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
         beforeSend: @escaping BeforeSendAction,
         afterSend: @escaping AsyncAfterSendAction,
         progress: @escaping ProgressAction
-    ) -> EventLoopFuture<HTTPResponse?>
+    ) -> EventLoopFuture<HTTPResponse>
 }
 
 // MARK: - 同步请求默认实现
@@ -351,7 +350,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await streamSend(.POST, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -379,7 +378,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await streamSend(.PATCH, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -407,7 +406,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await streamSend(.PUT, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -438,16 +437,16 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await asyncStreamSend(
             method,
             to: url,
             headers: headers,
             bodySize: bodySize,
-            stream: { request, channel, maxChunk, currentIndex in
+            stream: { request, eventLoop, maxChunk, currentIndex in
                 // 将异步stream闭包转换为EventLoopFuture
-                channel.eventLoop.makeFutureWithTask {
-                    try await stream(request, channel, maxChunk, currentIndex)
+                eventLoop.makeFutureWithTask {
+                    try await stream(request, maxChunk, currentIndex)
                 }
             },
             beforeSend: beforeSend,
@@ -485,7 +484,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await fileSend(
             .POST,
             to: url,
@@ -516,7 +515,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await fileSend(
             .PATCH,
             to: url,
@@ -547,7 +546,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await fileSend(
             .PUT,
             to: url,
@@ -581,7 +580,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AfterSendAction = { _ in },
         progress: @escaping ProgressAction = { _ in }
-    ) async throws {
+    ) async throws -> HTTPResponse {
         try await asyncFileSend(
             method,
             to: url,
@@ -722,7 +721,7 @@ public extension WhooshingClient {
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
     ) -> EventLoopFuture<HTTPResponse> {
-        self.send(method, headers: headers, to: url, bufferStrategy: .collect, beforeSend: beforeSend, afterSend: afterSend, progress: progress).map { $0! } // 强制解包因为.collect策略保证必有响应
+        self.send(method, headers: headers, to: url, bufferStrategy: .collect, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 }
 
@@ -827,7 +826,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncStreamSend(.POST, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -855,7 +854,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncStreamSend(.PATCH, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -883,7 +882,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncStreamSend(.PUT, to: url, headers: headers, bodySize: bodySize, stream: stream, beforeSend: beforeSend, afterSend: afterSend, progress: progress )
     }
 
@@ -915,8 +914,8 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
-        self.send(method, headers: headers, to: url, bufferStrategy: .streaming(totalSize: bodySize, stream: stream), beforeSend: beforeSend, afterSend: afterSend, progress: progress).map { _ in }
+    ) -> EventLoopFuture<HTTPResponse> {
+        self.send(method, headers: headers, to: url, bufferStrategy: .streaming(totalSize: bodySize, stream: stream), beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 }
 
@@ -944,7 +943,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncFileSend(.POST, to: url, file: file, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -968,7 +967,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncFileSend(.PATCH, to: url, file: file, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -992,7 +991,7 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
+    ) -> EventLoopFuture<HTTPResponse> {
         self.asyncFileSend(.PUT, to: url, file: file, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 
@@ -1010,8 +1009,8 @@ public extension WhooshingClient {
         beforeSend: @escaping BeforeSendAction = { _, _ in },
         afterSend: @escaping AsyncAfterSendAction = defaultAfterSend,
         progress: @escaping ProgressAction = { _ in }
-    ) -> EventLoopFuture<Void> {
-        return fileEventLoop.makeFutureWithTask {
+    ) -> EventLoopFuture<HTTPResponse> {
+        fileEventLoop.makeFutureWithTask {
             let filePath = FilePath(file)
             let fileHandle = try await FileSystem.shared.openFile(forReadingAt: filePath, options: .init())
             do {
@@ -1032,12 +1031,12 @@ public extension WhooshingClient {
                 )
                 
                 // 3. 执行流式上传
-                try await self.streamSend(
+                let response = try await self.streamSend(
                     method,
                     to: url,
                     headers: ["content-disposition": fileName],
                     bodySize: Int(info.size),
-                    stream: { request, channel, maxChunk, currentIndex in
+                    stream: { request, maxChunk, currentIndex in
                         guard let data = try await chunkIterator.next() else {
                             throw WSMClientErr.fileOperationUnknowErr.d("未成功读出数据", 14035)
                         }
@@ -1050,6 +1049,8 @@ public extension WhooshingClient {
                 
                 // 4. 正常关闭文件
                 try await fileHandle.close()
+                
+                return response
             } catch {
                 // 5. 异常时确保关闭文件
                 try await fileHandle.close()

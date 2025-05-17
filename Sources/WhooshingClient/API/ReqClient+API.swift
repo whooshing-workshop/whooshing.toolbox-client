@@ -45,7 +45,7 @@ final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
         beforeSend: @escaping BeforeSendAction,
         afterSend: @escaping AsyncAfterSendAction,
         progress: @escaping ProgressAction
-    ) -> EventLoopFuture<HTTPResponse?> {
+    ) -> EventLoopFuture<HTTPResponse> {
         let req = HTTPRequest(method: method, url: url, headers: headers, body: nil)
         return self.makeChannel(url: req.url).flatMap { (channel, handler, domain) in
             do {
@@ -70,7 +70,7 @@ final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
         let data: Data
     }
     
-    private func _send(request: HTTPRequest, channel: Channel, handler: RequestHandler, domain: String?, bufferStrategy: BufferStrategy, progress: @escaping @Sendable (ProgressContext<HTTPResponse?>) throws -> Void) -> EventLoopFuture<HTTPResponse?> {
+    private func _send(request: HTTPRequest, channel: Channel, handler: RequestHandler, domain: String?, bufferStrategy: BufferStrategy, progress: @escaping ProgressAction) -> EventLoopFuture<HTTPResponse> {
         let id = ObjectIdentifier(channel)
         var r = eventLoop.makeSucceededVoidFuture()
         guard let ioData = self.apiRequestIoData else { return eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12013)) }
@@ -109,8 +109,6 @@ final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
                 headers.replaceOrAdd(name: "host", value: domain)
             }
             return self.send(.init(method: .POST, url: request.url, headers: headers, body: .init(data: body)), channel: channel, handler: handler, bufferStrategy: .collect, progress: { _ in }).flatMapThrowing { res in
-                // 此处一定有响应，因为 bufferStrategy 是 .collect
-                let res = res!
                 self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
                 guard res.status == .ok else { throw ApiClient.Err.badResponse.d(14002).adds(res.status) }
                 // 当向认证模块发送认证请求之后，应当得到一个使用用户口令加密的新密钥，并使用该新密钥进行后续的通讯加密

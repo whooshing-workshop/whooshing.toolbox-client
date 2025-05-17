@@ -84,10 +84,10 @@ extension ApiClient: WhooshingClient {
         headers: HTTPHeaders,
         to url: WebURI,
         bufferStrategy: BufferStrategy,
-        beforeSend: @escaping @Sendable (inout HTTPRequest, Channel) throws -> (),
-        afterSend: @escaping @Sendable (Channel) -> EventLoopFuture<Void>,
-        progress: @escaping @Sendable (ProgressContext<HTTPResponse?>) throws -> Void = { _ in }
-    ) -> EventLoopFuture<HTTPResponse?> {
+        beforeSend: @escaping BeforeSendAction,
+        afterSend: @escaping AsyncAfterSendAction,
+        progress: @escaping ProgressAction = { _ in }
+    ) -> EventLoopFuture<HTTPResponse> {
         client.send(method, headers: headers, to: url, bufferStrategy: bufferStrategy, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
     }
 

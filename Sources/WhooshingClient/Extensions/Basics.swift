@@ -19,11 +19,11 @@ public func streamingHandle(
     chunkData: inout ByteBuffer,
     context: ChannelHandlerContext,
     bufferStrategy: BufferStrategy,
-    dic: SendableDictionary<ObjectIdentifier, ByteBuffer>, 
-    streaming: Bool) -> EventLoopFuture<ByteBuffer?> 
+    dic: SendableDictionary<ObjectIdentifier, ByteBuffer>,
+    streaming: Bool) -> EventLoopFuture<ByteBuffer?>
 {
+    let id = ObjectIdentifier(context.channel)
     if case .collect = bufferStrategy {
-        let id = ObjectIdentifier(context.channel)
         if streaming {
             if var data = dic[id] {
                 data.writeBuffer(&chunkData)
@@ -38,6 +38,13 @@ public func streamingHandle(
             return context.eventLoop.makeSucceededFuture(data == nil ? chunkData : { data!.writeBuffer(&chunkData); return data! }())
         }
     } else {
-        return context.eventLoop.makeSucceededFuture(nil)
+        if streaming {
+            if dic[id] == nil { dic[id] = chunkData }
+            return context.eventLoop.makeSucceededFuture(nil)
+        } else {
+            let head = dic[id]
+            dic[id] = nil
+            return context.eventLoop.makeSucceededFuture((head != nil) ? head! : chunkData)
+        }
     }
 }

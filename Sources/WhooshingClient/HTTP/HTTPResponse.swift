@@ -84,7 +84,12 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         self.version = version
         self.status = status
         self.headers = .init(hs)
-        self.body = body
+        
+        if let body = body {
+            self.body = body.readableBytes == 0 ? nil : body
+        } else {
+            self.body = nil
+        }
     }
     
     /// 解析 HTTP 协议版本字符串，转换为 HTTPVersion 实例。

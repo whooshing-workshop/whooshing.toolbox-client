@@ -86,7 +86,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
     public typealias OutboundIn = HTTPRequest
     public typealias OutboundOut = ByteBuffer
     
-    var promise: EventLoopPromise<HTTPResponse?>!
+    var promise: EventLoopPromise<HTTPResponse>!
     var progress: (ProgressContext<Bool>) throws -> Void = { _ in }
     var bufferStrategy: BufferStrategy = .collect
 
@@ -95,7 +95,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
     private let ioHandler: RequestIOHandler?
     private let progressPool: SendableDictionary<ObjectIdentifier, TempProgress> = .init()
 
-    public init(promise: EventLoopPromise<HTTPResponse?>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
+    public init(promise: EventLoopPromise<HTTPResponse>?, logger: Logger?, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
         self.promise = promise
         self.ioHandler = ioHandler
         self.byteBufferAllocator = byteBufferAllocator
@@ -154,12 +154,12 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
                 }
                 if !streaming {
                     self.progressPool[id] = nil
+                    guard var res = response.0 else { fatalError("这里 response 不应为空") }
                     if case .collect = self.bufferStrategy {
-                        guard var res = response.0 else { fatalError("这里 response 不应为空") }
                         res.channel = context.channel
                         self.promise.succeed(res)
                     } else {
-                        self.promise.succeed(nil)
+                        self.promise.succeed(res)
                     }
                 }
             case .failure(let err):
@@ -197,7 +197,7 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
             r = r.flatMap { sendData(streamIndex: 0, currentSize: 0) }
 
             @Sendable func sendData(streamIndex: Int, currentSize: Int) -> EventLoopFuture<Void> {
-                action(request, context.channel, ChunkTool.maxChunk, streamIndex).flatMap { data in
+                action(request, context.channel.eventLoop, ChunkTool.maxChunk, streamIndex).flatMap { data in
                     guard ChunkTool.isProperSize(bytes: data.readableBytes) else {
                         return context.eventLoop.makeFailedFuture(Err.chunkSizeExceed.d("不应当超过 \(ChunkTool.maxChunkStr), 但得到大小 \(ChunkTool.formatByteSize(data.readableBytes))", 13030))
                     }
