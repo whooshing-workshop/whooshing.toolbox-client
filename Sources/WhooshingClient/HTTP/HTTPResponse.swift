@@ -65,8 +65,10 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     /// - Parameter data: 包含完整响应内容的字节缓冲。
     /// - Throws: 如果解析失败，抛出相关错误。
     public init(data: ByteBuffer) throws {
-        var (header, body) = try Self.parseHTTPResponse(from: data)
-        guard let headers = header.readString(length: header.readableBytes)?.components(separatedBy: "\r\n") else { throw Err.responseParseFailed.d("无法将请求转为 String", 10070) }
+        var responseData = data
+        var (header, body) = try Self.parseHTTPResponse(from: &responseData)
+        guard let headerStr = header.readString(length: header.readableBytes) else { throw Err.responseParseFailed.d("无法将请求转为 String", 10070) }
+        let headers = headerStr.components(separatedBy: "\r\n")
         // Headers 解析
         guard headers.count >= 1 else { throw Err.responseParseFailed.d("格式不正确，无效的 Header", 10072) }
         let requestLine = headers[0].components(separatedBy: " ")
@@ -122,15 +124,15 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     /// - Parameter buffer: 完整响应数据。
     /// - Returns: 包含头部和正文的元组。
     /// - Throws: 如果格式不正确或提取失败，抛出错误。
-    static private func parseHTTPResponse(from buffer: ByteBuffer) throws -> (headers: ByteBuffer, body: ByteBuffer?) {
+    static private func parseHTTPResponse(from buffer: inout ByteBuffer) throws -> (headers: ByteBuffer, body: ByteBuffer?) {
         // 查找请求头和请求体的分隔符 `\r\n\r\n`
         if let headerEndIndex = findHeaderEndIndex(in: buffer) {
-            guard let headers = buffer.getSlice(at: buffer.readerIndex, length: headerEndIndex) else { throw Err.unknowErr.d("无法获得 Header 数据片", 10076) }
-            // +4 是跳过 \r\n\r\n
-            guard let body = buffer.getSlice(at: headerEndIndex + 4, length: buffer.readableBytes - (headerEndIndex + 4)) else { throw Err.unknowErr.d("找到了分隔符，却无法获得 Body 数据片", 10077) }
+            guard let headers = buffer.readSlice(length: headerEndIndex - 3) else { throw Err.unknowErr.d("无法获得 Header 数据片", 10076) }
+            buffer.moveReaderIndex(forwardBy: 4)
+            guard let body = buffer.readSlice(length: buffer.readableBytes) else { throw Err.unknowErr.d("找到了分隔符，却无法获得 Body 数据片", 10077) }
+            let ddd = String(buffer: headers)
             return (headers: headers, body: body)
         }
-
         // 表示没有找到分隔符，即没有 Body
         return (buffer, nil)
     }
@@ -142,7 +144,6 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     static private func findHeaderEndIndex(in buffer: ByteBuffer) -> Int? {
         let searchPattern: [UInt8] = [13, 10, 13, 10]  // \r\n\r\n
         var index = buffer.readerIndex
-
         // 持续查找直到 buffer 中没有足够的字节
         while index + 3 < buffer.readableBytes {
             // 获取当前位置的 4 字节

@@ -267,22 +267,27 @@ public final class RequestHandler: ChannelDuplexHandler, RemovableChannelHandler
     }
     
     public func channelRegistered(context: ChannelHandlerContext) {
+        context.fireChannelRegistered()
         ioHandler?.connectionStart(context: context).whenFailure { err in
             self.errorHappend(context: context, error: err)
         }
     }
     
     public func channelUnregistered(context: ChannelHandlerContext) {
+        context.fireChannelUnregistered()
         self.progressPool[ObjectIdentifier(context.channel)] = nil
-        ioHandler?.connectionEnd(context: context).flatMapThrowing {
-            context.fireChannelInactive()
-        }.whenFailure { err in
+        ioHandler?.connectionEnd(context: context).whenFailure { err in
             self.errorHappend(context: context, error: err)
         }
     }
     
+    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+        self.errorHappend(context: context, error: error)
+    }
+    
     func errorHappend(context: ChannelHandlerContext, error: Error) {
         logger?.warning("\(error)")
+        promise?.fail(error)
         context.fireErrorCaught(error)
     }
 

@@ -66,9 +66,9 @@ enum API {
                 ioData.errorTemps[id] = nil
                 return context.eventLoop.makeFailedFuture(err)
             } else {
-                if let status = checkHeader(res: response) {
-                    ioData.errorTemps[id] = status
-                    return context.eventLoop.makeSucceededFuture((nil, response))
+                if let res = try? HTTPResponse.init(data: response) {
+                    ioData.errorTemps[id] = res.status
+                    return context.eventLoop.makeSucceededFuture((res, response))
                 }
             }
 
