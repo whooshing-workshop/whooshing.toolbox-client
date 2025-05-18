@@ -127,10 +127,9 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     static private func parseHTTPResponse(from buffer: inout ByteBuffer) throws -> (headers: ByteBuffer, body: ByteBuffer?) {
         // 查找请求头和请求体的分隔符 `\r\n\r\n`
         if let headerEndIndex = findHeaderEndIndex(in: buffer) {
-            guard let headers = buffer.readSlice(length: headerEndIndex - 3) else { throw Err.unknowErr.d("无法获得 Header 数据片", 10076) }
+            guard let headers = buffer.readSlice(length: headerEndIndex) else { throw Err.unknowErr.d("无法获得 Header 数据片", 10076) }
             buffer.moveReaderIndex(forwardBy: 4)
             guard let body = buffer.readSlice(length: buffer.readableBytes) else { throw Err.unknowErr.d("找到了分隔符，却无法获得 Body 数据片", 10077) }
-            let ddd = String(buffer: headers)
             return (headers: headers, body: body)
         }
         // 表示没有找到分隔符，即没有 Body
@@ -149,7 +148,7 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
             // 获取当前位置的 4 字节
             if let slice = buffer.getBytes(at: index, length: 4) {
                 // 比较这 4 字节是否等于 \r\n\r\n
-                if slice == searchPattern { return index }
+                if slice == searchPattern { return index - buffer.readerIndex }
             }
             index += 1
         }
