@@ -1,13 +1,22 @@
 import Foundation
 import NIOHTTP1
 
+#if os(Linux)
+import FoundationNetworking
+#endif
+
 public struct Curl {
+    
+    #if !canImport(Darwin) || os(macOS)
+    
     /// 判断 uri 是否可被正确连接
     /// 该函数会发起一个真实的 curl 请求以测试网络连接
     /// 若可以连接，则返回对方发来的状态码
     /// 若无法连接，则返回 curl 错误，见 ``Curl.Err``
+    ///
+    /// Unix 命令行仅在 linux 或 macOS 受支持
     @discardableResult
-    static func isUriConnectable(_ uri: String) throws -> HTTPResponseStatus {
+    static func isUriConnectable(_ uri: String) async throws -> HTTPResponseStatus {
         let task = Process()
         let pipe = Pipe()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -33,6 +42,26 @@ public struct Curl {
         }
         return HTTPResponseStatus(statusCode: code)
     }
+    
+    #else
+    
+    /// 判断 uri 是否可被正确连接
+    /// 该函数会发起一个真实的 curl 请求以测试网络连接
+    /// 若可以连接，则返回对方发来的状态码
+    /// 若无法连接，则返回 URLError 错误，见 ``URLError``
+    ///
+    /// IOS 支持
+    @discardableResult
+    static func isUriConnectable(_ uri: String) async throws -> HTTPResponseStatus {
+        guard let url = URL(string: uri) else { throw URLError(.badURL) }
+        let req = URLRequest(url: url)
+        guard let res = try await URLSession.shared.data(for: req).1 as? HTTPURLResponse else {
+            throw URLError(.unknown)
+        }
+        return .init(statusCode: res.statusCode)
+    }
+    
+    #endif
 }
 
 public extension Curl {

@@ -115,7 +115,7 @@ extension HttpsClient {
         request.method = req.method
         request.headers = req.headers
         request.body = .stream(stream, length: .known(Int64(totalSize)))
-        try Curl.isUriConnectable(request.url)
+        try await Curl.isUriConnectable(request.url)
         return try await client.execute(request, deadline: .distantFuture, logger: logger)
     }
     
