@@ -82,6 +82,7 @@ extension HttpsClient {
                 do {
                     // 发送请求头
                     let (head, _) = try req.data()
+                    self.logger?.trace("HTTPS.Write-正在向服务器流传输 流数据头，数据体总大小: \(totalSize)")
                     var prog = ProgressContext<HTTPResponse?>(index: -1, data: head, done: totalSize == 0, curBytes: 0, totalBytes: totalSize, startDate: Date(), channel: nil, response: nil)
                     try progress(prog)
                     
@@ -98,9 +99,9 @@ extension HttpsClient {
                             throw Err.streamingEngageFailed.d("未成功将数据添加到流中", 15030)
                         }
                         
-                        print("CurSize: \(curSize)")
                         curSize += data.readableBytes
                         prog = prog.next(data, done: curSize == totalSize)
+                        self.logger?.trace("HTTPS.Write-正在向服务器流传输 块数据: 当前大小: \(prog.curBytesStr), 总大小: \(prog.totalBytesStr)")
                         try progress(prog)
                         i += 1
                     }
@@ -116,6 +117,8 @@ extension HttpsClient {
         request.headers = req.headers
         request.body = .stream(stream, length: .known(Int64(totalSize)))
         try await Curl.isUriConnectable(request.url)
+        
+        self.logger?.info("HTTPS.Client-发送请求: \(request.url)")
         return try await client.execute(request, deadline: .distantFuture, logger: logger)
     }
     
@@ -135,17 +138,20 @@ extension HttpsClient {
             response: res
         )
         
+        self.logger?.trace("HTTPS.Read-正在从服务器流接收 流数据头: 数据体总大小: \(totalSize ?? -1)")
         try progress(prog)
 
         if let size = totalSize {
             let data = try await response.body.collect(upTo: size)
             res.body = data
+            self.logger?.trace("ReqIOHandler.Read-正在从服务器流 Collect 块数据: 总大小: \(prog.totalBytes ?? -1)")
             try progress(prog.next(data, done: true))
         } else {
             var curSize = 0
             for try await buffer in response.body {
                 curSize += buffer.readableBytes
                 prog = prog.next(buffer, done: false)
+                self.logger?.trace("ReqIOHandler.Read-正在从服务器流接收 流数据: 当前大小: \(prog.curBytes), 总大小: \(prog.totalBytes ?? -1)")
                 try progress(prog)
             }
             try progress(prog.next(.init(), done: true))
