@@ -3,8 +3,11 @@ import Foundation
 import Cryptos
 import NIOCore
 import NIOFoundationCompat
+import NIOHTTP1
 
 extension ChannelHandlerContext: @retroactive @unchecked Sendable {}
+extension HTTPRequestEncoder: @retroactive @unchecked Sendable {}
+extension NIOHTTPRequestHeadersValidator: @retroactive @unchecked Sendable {}
 
 extension ByteBuffer: @retroactive ThrowableDataConvertable {}
 extension ByteBuffer: @retroactive SafeDataConvertable {
@@ -13,38 +16,4 @@ extension ByteBuffer: @retroactive SafeDataConvertable {
 
 public extension URL {
     func toUri(with path: String) -> WebURI { .init(stringLiteral: self.absoluteString + path) }
-}
-
-public func streamingHandle(
-    chunkData: inout ByteBuffer,
-    context: ChannelHandlerContext,
-    bufferStrategy: BufferStrategy,
-    dic: SendableDictionary<ObjectIdentifier, ByteBuffer>,
-    streaming: Bool) -> EventLoopFuture<ByteBuffer?>
-{
-    let id = ObjectIdentifier(context.channel)
-    if case .collect = bufferStrategy {
-        if streaming {
-            if var data = dic[id] {
-                data.writeBuffer(&chunkData)
-                dic[id] = data
-            } else {
-                dic[id] = chunkData
-            }
-            return context.eventLoop.makeSucceededFuture(nil)
-        } else {
-            var data = dic[id]
-            dic[id] = nil
-            return context.eventLoop.makeSucceededFuture(data == nil ? chunkData : { data!.writeBuffer(&chunkData); return data! }())
-        }
-    } else {
-        if streaming {
-            if dic[id] == nil { dic[id] = chunkData }
-            return context.eventLoop.makeSucceededFuture(nil)
-        } else {
-            let head = dic[id]
-            dic[id] = nil
-            return context.eventLoop.makeSucceededFuture((head != nil) ? head! : chunkData)
-        }
-    }
 }

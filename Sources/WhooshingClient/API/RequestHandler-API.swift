@@ -5,6 +5,7 @@ import NIOCore
 import Logging
 import NIOHTTP1
 import Foundation
+import AsyncHTTPClient
 
 #if WHOOSHING_VAPOR
 import Vapor
@@ -29,23 +30,24 @@ enum API {
         }
     }
     
-    struct RequestIOCrypto: RequestIOHandler, Sendable {
+    struct RequestIOCrypto: RequestCryptoIOHandler, Sendable {
+        
         unowned private(set) var client: APIReqClient
         let logger: Logger?
         
         /// 发送请求时，进行编码并加密
-        func send(request: HTTPRequest, dataChunk: ByteBuffer, context: ChannelHandlerContext, allocator: ByteBufferAllocator, streaming: Bool) -> EventLoopFuture<ByteBuffer> {
+        func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
             guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12006)) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
                 logger?.trace("API.Client.HTTP-发送请求，进行加密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
                 if let key = ioData.connectionKeys[id] {
-                    cipher = try Crypto.Symm.encrypt(dataChunk, key: key)
+                    cipher = try Crypto.Symm.encrypt(data, key: key)
                 } else {
                     // 代表首次请求，直接发送明文
                     // 用户凭据可明文发送，且用户口令会加密处理，因此整个请求无需加密
-                    cipher = .init(buffer: dataChunk)
+                    cipher = .init(buffer: data)
                 }
                 let buffer = ByteBuffer(data: cipher)
                 return context.eventLoop.makeSucceededFuture(buffer)
@@ -55,20 +57,20 @@ enum API {
         }
 
         /// 收到响应时，进行解密并解码
-        func get(response: ByteBuffer, bufferStrategy: BufferStrategy, context: ChannelHandlerContext, streaming: Bool) -> EventLoopFuture<(HTTPResponse?, ByteBuffer)> {
+        func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
             guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12010)) }
             let id = ObjectIdentifier(context.channel)
 
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
 
             if let _ = ioData.errorTemps[id] {
-                let err = parseError(body: response)
+                let err = parseError(body: data)
                 ioData.errorTemps[id] = nil
                 return context.eventLoop.makeFailedFuture(err)
             } else {
-                if let res = try? HTTPResponse.init(data: response) {
+                if let res = try? HTTPResponse(data: data) {
                     ioData.errorTemps[id] = res.status
-                    return context.eventLoop.makeSucceededFuture((res, response))
+                    return context.eventLoop.makeSucceededFuture(data)
                 }
             }
 
@@ -76,23 +78,13 @@ enum API {
                 logger?.trace("API.Client.HTTP-收到响应，进行解密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
                 var plain: ByteBuffer
                 if let key = ioData.connectionKeys[id] {
-                    plain = try Crypto.Symm.decrypt(.init(buffer: response), key: key)
+                    plain = try Crypto.Symm.decrypt(.init(buffer: data), key: key)
                 } else {
                     guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 14005).adds(.internalServerError) }
                     let tokenKey = Crypto.Symm.Key(data: token)
-                    plain = try Crypto.Symm.decrypt(.init(buffer: response), key: tokenKey)
+                    plain = try Crypto.Symm.decrypt(.init(buffer: data), key: tokenKey)
                 }
-                let plainStable = plain
-                return streamingHandle(
-                    chunkData: &plain,
-                    context: context,
-                    bufferStrategy: bufferStrategy,
-                    dic: ioData.readingBufferDatas,
-                    streaming: streaming
-                ).flatMapThrowing { data in
-                    if let d = data { return (try HTTPResponse(data: d), plainStable) }
-                    else { return (nil, plainStable) }
-                }
+                return context.eventLoop.makeSucceededFuture(plain)
             } catch let err {
                 return context.eventLoop.makeFailedFuture(err)
             }

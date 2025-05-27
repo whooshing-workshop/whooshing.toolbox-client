@@ -2,6 +2,7 @@ import NIOHTTP1
 import NIOCore
 import ErrorHandle
 import Foundation
+import AsyncHTTPClient
 
 #if WHOOSHING_VAPOR
 import Vapor
@@ -9,17 +10,42 @@ import Vapor
 
 /// 表示一个 HTTP 响应，包含状态码、版本、头部信息、正文内容和相关通道。
 /// 适用于客户端与服务端的 HTTP 响应处理和构造。
-public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
+public struct HTTPResponse: Sendable, CustomStringConvertible {
+    
     /// HTTP 协议版本，默认为 HTTP/1.1。
     public var version: HTTPVersion
     /// HTTP 响应状态，例如 200 OK、404 Not Found。
     public var status: HTTPResponseStatus
     /// HTTP 响应头，用于包含响应的元信息，例如 Content-Type。
     public var headers: HTTPHeaders
-    /// HTTP 响应体内容，通常为 HTML、JSON 等。
-    public var body: ByteBuffer?
     /// 与响应相关联的底层 NIO 通道（可选），用于网络上下文。
     public weak var channel: Channel?
+    
+    public var body: HTTPBody? {
+        willSet {
+            if let body = newValue {
+                switch body.type {
+                case .bytes(let bytes):
+                    self.headers.remove(name: "transfer-encoding")
+                    self.headers.replaceOrAdd(name: "content-length", value: String(bytes.readableBytes))
+                case .stream:
+                    self.headers.remove(name: "content-length")
+                    self.headers.replaceOrAdd(name: "transfer-encoding", value: "chunked")
+                }
+                for (name, value) in body.headers {
+                    self.headers.replaceOrAdd(name: name, value: value)
+                }
+            } else {
+                self.headers.remove(name: "transfer-encoding")
+                self.headers.replaceOrAdd(name: "content-length", value: "0")
+                if let body = body {
+                    for (name, _) in body.headers {
+                        self.headers.remove(name: name)
+                    }
+                }
+            }
+        }
+    }
         
     /// 响应的字符串描述，包括状态行、头部信息和正文，适用于调试或日志记录。
     public var description: String {
@@ -31,7 +57,7 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         }
 
         let bodyString: String
-        if let body = body, body.readableBytes > 0 {
+        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
             var copy = body
             bodyString = copy.readString(length: copy.readableBytes) ?? ""
         } else {
@@ -50,14 +76,14 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     ///   - headers: 响应头，默认为空。
     public init(
         status: HTTPResponseStatus,
-        body: ByteBuffer? = nil,
+        body: HTTPBody? = nil,
         version: HTTPVersion = .http1_1,
         headers: HTTPHeaders = [:]
     ) {
         self.status = status
-        self.body = body
         self.version = version
         self.headers = headers
+        self.body = body
     }
    
     /// 从 ByteBuffer 中解析构造 HTTPResponse 实例。
@@ -88,7 +114,7 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
         self.headers = .init(hs)
         
         if let body = body {
-            self.body = body.readableBytes == 0 ? nil : body
+            self.body = body.readableBytes == 0 ? nil : .bytes(body)
         } else {
             self.body = nil
         }
@@ -163,78 +189,39 @@ public struct HTTPResponse: Sendable, CustomStringConvertible, BodyCodable {
     }
 }
 
-extension HTTPResponse: Codable {
-    /// 从 Decoder 实例解码生成 HTTPResponse。
-    ///
-    /// - Parameter decoder: 用于解码的 Decoder 实例。
-    /// - Throws: 解码失败时抛出异常。
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        version = try container.decode(HTTPVersion.self, forKey: .version)
-        status = try container.decode(HTTPResponseStatus.self, forKey: .status)
-        headers = try container.decode(HTTPHeaders.self, forKey: .headers)
-        body = try container.decode(ByteBuffer?.self, forKey: .body)
-        channel = nil
-    }
-
-    /// 将 HTTPResponse 编码为指定的 Encoder。
-    ///
-    /// - Parameter encoder: 用于编码的 Encoder 实例。
-    /// - Throws: 编码失败时抛出异常。
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(version, forKey: .version)
-        try container.encode(status, forKey: .status)
-        try container.encode(headers, forKey: .headers)
-        try container.encode(body, forKey: .body)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case version
-        case status
-        case headers
-        case body
-    }
-}
-
-
 #if WHOOSHING_VAPOR
 
 extension HTTPResponse: AsyncResponseEncodable {
     public func encodeResponse(for request: Request) async throws -> Response {
-        let body: Response.Body
-        if let buffer = self.body {
-            body = .init(buffer: buffer)
-        } else {
-            body = .empty
-        }
-        let response = Response(
-            status: self.status,
-            version: self.version,
-            headers: self.headers,
-            body: body
-        )
-        return response
+        return try await encodeResponse(for: request).get()
     }
 }
 
 extension HTTPResponse: ResponseEncodable {
     public func encodeResponse(for request: Request) -> EventLoopFuture<Response> {
-        let body: Response.Body
-        if let buffer = self.body {
-            body = .init(buffer: buffer, byteBufferAllocator: request.byteBufferAllocator)
-        } else {
-            body = .empty
+        request.eventLoop.makeFutureWithTask {
+            let b: Response.Body
+            if let body = self.body {
+                switch body {
+                case .bytes(let bytes): b = .init(buffer: bytes)
+                case .stream(let asyncBytes):
+                    b = .init(asyncStream: { writer in
+                        for try await chunk in asyncBytes {
+                            try await writer.write(.buffer(chunk))
+                        }
+                    })
+                }
+            } else {
+                b = .empty
+            }
+            let response = Response(
+                status: self.status,
+                version: self.version,
+                headers: self.headers,
+                body: b
+            )
         }
-        let response = Response(
-            status: self.status,
-            version: self.version,
-            headers: self.headers,
-            body: body
-        )
-        return request.eventLoop.makeSucceededFuture(response)
     }
 }
-extension HTTPResponse: Content {}
 
 #endif

@@ -4,6 +4,7 @@ import NIOConcurrencyHelpers
 import NIO
 import Logging
 import NIOHTTP1
+import AsyncHTTPClient
 
 #if WHOOSHING_VAPOR
 import Vapor
@@ -25,8 +26,6 @@ public final class ApiClient: Sendable {
     
     /// 当前正在进行的请求所在的 TCP NIO Channel
     public weak var channel: (any Channel)? { client.channel }
-    /// 用于处理请求的主要 Handler，见 ``RequestHandler``
-    public weak var mainHandler: (RemovableChannelHandler & Sendable)? { client.mainHandler }
     /// 日志系统
     public var logger: Logger? { client.logger }
     /// 主要的 EventLoop
@@ -46,6 +45,10 @@ public final class ApiClient: Sendable {
     public init(credential: String, token: String, eventLoop: EventLoop, logger: Logger? = nil) {
         self.client = .new(eventLoop: eventLoop, logger: logger, byteBufferAllocator: allocator)
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
+    }
+    
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
+        self.client.removeHTTPHandlers(in: eventLoop)
     }
     
     #if WHOOSHING_VAPOR
@@ -80,15 +83,10 @@ public final class ApiClient: Sendable {
 /// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
     public func send(
-        _ method: HTTPMethod,
-        headers: HTTPHeaders,
-        to url: WebURI,
-        bufferStrategy: BufferStrategy,
-        beforeSend: @escaping BeforeSendAction,
-        afterSend: @escaping AsyncAfterSendAction,
-        progress: @escaping ProgressAction = { _ in }
+        _ request: HTTPRequest,
+        afterSend: @escaping AfterSendAction
     ) -> EventLoopFuture<HTTPResponse> {
-        client.send(method, headers: headers, to: url, bufferStrategy: bufferStrategy, beforeSend: beforeSend, afterSend: afterSend, progress: progress)
+        client.send(request, afterSend: afterSend)
     }
 
     public var fileEventLoop: any EventLoop { client.fileEventLoop }

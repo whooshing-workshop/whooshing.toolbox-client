@@ -5,28 +5,6 @@ import NIOCore
 import Vapor
 #endif
 
-/// 数据缓冲策略，用于控制数据如何在处理过程中进行缓存或流式传输。
-///
-/// `BufferStrategy` 提供两种策略：
-/// - `.collect`：一次性收集全部数据后再处理。
-/// - `.streaming`：在数据传输过程中进行逐步处理，适合大数据或流式内容。
-public enum BufferStrategy: Sendable {
-    
-    /// 一次性收集所有数据后再统一处理。
-    ///
-    /// 适用于数据量较小、处理逻辑依赖完整数据的场景。
-    case collect
-
-    /// 以流式方式处理数据，边接收边处理。
-    ///
-    /// - Parameters:
-    ///   - totalSize: 预计的数据总大小（单位：字节）。
-    ///   - stream: 异步数据处理闭包，接收数据块并处理。见 ``AsyncStreamingDataAction``
-    ///
-    /// 适用于处理大型文件、实时数据等流式任务。
-    case streaming(totalSize: Int, stream: AsyncStreamingDataAction)
-}
-
 
 /// 表示某个数据传输或处理任务的进度上下文。
 ///
@@ -105,6 +83,7 @@ public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Va
     public var description: String {
         let valueStr: String
         if self.response is ExpressibleByNilLiteral {
+            // 此处必须如此才能判断正确，忽略这个 warning，勿修改
             valueStr = self.response as! Any? == nil ? "false" : "true"
         } else {
             valueStr = String(describing: Value.self)

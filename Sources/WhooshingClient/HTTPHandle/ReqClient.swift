@@ -6,26 +6,27 @@ import NIOExtras
 import NIOPosix
 import Logging
 import Foundation
+import AsyncHTTPClient
+import NIOHTTP1
 
 open class ReqClient: @unchecked Sendable {
     public let eventLoop: EventLoop
     public let fileEventLoop: EventLoop
     public let logger: Logger?
     public let byteBufferAllocator: ByteBufferAllocator
-    public var ioHandler: RequestIOHandler?
+    public var ioHandler: RequestCryptoIOHandler!
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
-    public weak var mainHandler: (RemovableChannelHandler & Sendable)?
     public weak var channel: Channel? {
         if let channel = __channel, channel.isActive { return channel }
         return nil
     }
     
     private weak var __channel: Channel?
-    private let headerPool: SendableDictionary<ObjectIdentifier, HTTPResponse> = .init()
     private var lock: NIOLock = .init()
+    private var removableHandlers: [RemovableChannelHandler & Sendable] = []
     
-    public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestIOHandler? = nil) {
+    public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestCryptoIOHandler? = nil) {
         self.eventLoop = eventLoop
         self.fileEventLoop = eventLoop.next()
         self.logger = logger
@@ -33,7 +34,7 @@ open class ReqClient: @unchecked Sendable {
         self.ioHandler = ioHandler
     }
 
-    public func makeChannel(url: WebURI) -> EventLoopFuture<(Channel, RequestHandler, domain: String?)> {
+    public func makeChannel(url: WebURI) -> EventLoopFuture<(Channel, RequestWrapperHandler, domain: String?)> {
         
         guard [.http, .https].contains(url.scheme) else {
             return eventLoop.makeFailedFuture(Err.requestFormatError.d("预期请求协议为 http 或 https，但得到 \(url.scheme)", 13052))
@@ -53,22 +54,31 @@ open class ReqClient: @unchecked Sendable {
         let id = "\(url.host):\(port)"
 
         if let channel = self.channelPool[id], channel.isActive {
-            return channel.pipeline.handler(type: RequestHandler.self).flatMap { handler in
+            return channel.pipeline.handler(type: RequestWrapperHandler.self).flatMap { handler in
                 self.__channel = channel
-                self.mainHandler = handler
                 return channel.eventLoop.makeSucceededFuture((channel, handler, isDomainHost ? url.host : nil))
             }
         }
-
-        let handler = RequestHandler(promise: nil, logger: logger, byteBufferAllocator: byteBufferAllocator, ioHandler: ioHandler)
+        
+        let cryptoHandler = RequestCryptoHandler(logger: logger, ioHandler: ioHandler)
+        let wrapperHandler = RequestWrapperHandler(logger: logger)
+        
+        self.removableHandlers = [
+            cryptoHandler,
+            HTTPRequestEncoder(configuration: .init()),
+            ByteToMessageHandler(HTTPResponseDecoder(leftOverBytesStrategy: .dropBytes)),
+            NIOHTTPRequestHeadersValidator(),
+            wrapperHandler
+        ]
 
         let bootstrap = ClientBootstrap(group: self.eventLoop)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([
                     LengthFieldPrepender(lengthFieldLength: .eight, lengthFieldEndianness: .big),
-                    ByteToMessageHandler(LengthFieldBasedFrameDecoder(lengthFieldLength: .eight, lengthFieldEndianness: .big)),
-                    handler
-                ])
+                    ByteToMessageHandler(LengthFieldBasedFrameDecoder(lengthFieldLength: .eight, lengthFieldEndianness: .big))
+                ]).flatMap {
+                    channel.pipeline.addHandlers(self.removableHandlers)
+                }
             }
             .channelOption(.socketOption(.tcp_nodelay), value: 1)
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
@@ -77,43 +87,17 @@ open class ReqClient: @unchecked Sendable {
         return bootstrap.connect(host: url.host, port: port).map { channel in
             self.channelPool[id] = channel
             self.__channel = channel
-            self.mainHandler = handler
-            return (channel, handler, isDomainHost ? url.host : nil)
+            return (channel, wrapperHandler, isDomainHost ? url.host : nil)
         }
     }
 
     public func send(
-        _ c: HTTPRequest,
+        _ client: HTTPRequest,
         channel: Channel,
-        handler: RequestHandler,
-        bufferStrategy: BufferStrategy,
-        progress: @escaping ProgressAction
+        handler: RequestWrapperHandler
     ) -> EventLoopFuture<HTTPResponse> {
         let promise = channel.eventLoop.makePromise(of: HTTPResponse.self)
-        let id = ObjectIdentifier(channel)
-        var client = c
-        if case let .streaming(totalSize, _) = bufferStrategy {
-            client.body = nil
-            client.headers.replaceOrAdd(name: "content-length", value: String(totalSize))
-        } else if let body = client.body {
-            client.headers.replaceOrAdd(name: "content-length", value: String(body.readableBytes))
-        }
         handler.promise = promise
-        handler.bufferStrategy = bufferStrategy
-        handler.progress = { prog in
-            if prog.response {
-                if self.headerPool[id] == nil {
-                    self.headerPool[id] = try Guard( { try .init(data: prog.data) }, throw: Err.requestParseFailed.d(14010))
-                }
-                let header = self.headerPool[id]!
-                try progress(prog.copy(value: header))
-                if prog.done {
-                    self.headerPool[id] = nil
-                }
-                return
-            }
-            try progress(prog.copy(value: nil))
-        }
         return channel.writeAndFlush(client).flatMapError { err in
             self.logger?.warning("\(err)")
             promise.fail(err)
@@ -122,14 +106,26 @@ open class ReqClient: @unchecked Sendable {
             promise.futureResult
         }
     }
-    
-    public func send(_ request: HTTPRequest) -> EventLoopFuture<HTTPResponse> { fatalError("不应执行该方法") }
 
     public func closeAll() async {
         for (_, channel) in channelPool {
             try? await channel.close(mode: .all)
         }
         channelPool.removeAll()
+    }
+    
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
+        guard let channel = self.channel else { return eventLoop.makeSucceededVoidFuture() }
+        var r = channel.eventLoop.makeSucceededVoidFuture()
+        for handler in self.removableHandlers {
+            r = r.flatMap {
+                channel.pipeline.removeHandler(handler)
+            }
+        }
+        r = r.flatMapThrowing {
+            self.removableHandlers.removeAll()
+        }
+        return r.hop(to: eventLoop)
     }
 
     enum Err: String, ErrList {

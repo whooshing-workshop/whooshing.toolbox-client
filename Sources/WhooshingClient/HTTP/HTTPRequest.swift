@@ -2,6 +2,7 @@ import NIOHTTP1
 import NIOCore
 import ErrorHandle
 import Foundation
+import AsyncHTTPClient
 
 #if WHOOSHING_VAPOR
 import Vapor
@@ -9,7 +10,8 @@ import Vapor
 
 /// 表示一个 HTTP 请求，封装了请求方法、URL、HTTP 版本、头部信息、请求体以及相关的 NIO 通道。
 /// 该结构用于在客户端或服务端构建和解析 HTTP 请求。
-public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
+public struct HTTPRequest: Sendable, CustomStringConvertible {
+    
     /// HTTP 请求方法，例如 GET、POST、PUT 等。
     public var method: HTTPMethod
     /// 请求的目标 URL，使用 WebURI 类型进行封装。
@@ -18,10 +20,34 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     public var version: HTTPVersion
     /// HTTP 请求头，用于传递元信息，例如 Content-Type、Authorization 等。
     public var headers: HTTPHeaders
-    /// 请求体的内容，通常用于 POST 或 PUT 请求中携带数据。为 ByteBuffer 类型，可选。
-    public var body: ByteBuffer?
     /// 与该请求关联的 NIO 通道，可能为 nil。用于底层网络通信上下文。
     public weak var channel: Channel?
+    
+    public var body: HTTPBody? {
+        willSet {
+            if let body = newValue {
+                switch body.type {
+                case .bytes(let bytes):
+                    self.headers.remove(name: "transfer-encoding")
+                    self.headers.replaceOrAdd(name: "content-length", value: String(bytes.readableBytes))
+                case .stream:
+                    self.headers.remove(name: "content-length")
+                    self.headers.replaceOrAdd(name: "transfer-encoding", value: "chunked")
+                }
+                for (name, value) in body.headers {
+                    self.headers.replaceOrAdd(name: name, value: value)
+                }
+            } else {
+                self.headers.remove(name: "transfer-encoding")
+                self.headers.replaceOrAdd(name: "content-length", value: "0")
+                if let body = body {
+                    for (name, _) in body.headers {
+                        self.headers.remove(name: name)
+                    }
+                }
+            }
+        }
+    }
     
     /// 请求的字符串描述，包含请求行、头部和正文，用于日志或调试输出。
     public var description: String {
@@ -31,11 +57,11 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
         if !headerLines.isEmpty { headerLines += "\r\n" }
         
         let bodyString: String
-        if let body = body, body.readableBytes > 0 {
+        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
             var copy = body
             bodyString = copy.readString(length: copy.readableBytes) ?? ""
         } else {
-            bodyString = ""
+            bodyString = "<<async stream content>>"
         }
         
         return requestLine + headerLines + "\r\n" + bodyString
@@ -46,13 +72,12 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     /// - Parameter bufferAllocator: ByteBuffer 分配器，默认新建一个。
     /// - Returns: 一个元组，第一个元素是包含请求行和头部的 ByteBuffer，第二个是可选的正文 ByteBuffer。
     /// - Throws: 若转换过程中出现错误，可能抛出异常。
-    public func data(bufferAllocator: ByteBufferAllocator = .init()) throws -> (ByteBuffer, ByteBuffer?) {
-        var buffer = bufferAllocator.buffer(capacity: 0)
-        let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
-        buffer.writeString(requestLine)
-        headers.forEach { (name, value) in buffer.writeString("\(name): \(value)\r\n") }
-        buffer.writeString("\r\n")
-        return (buffer, body)
+    public func headData(allocator: ByteBufferAllocator = .init()) -> ByteBuffer {
+        var requestStr = "\(method.rawValue) \(url) HTTP/1.1\r\n"
+        headers.forEach { (name, value) in requestStr += "\(name): \(value)\r\n" }
+        requestStr += "\r\n"
+        let buffer = allocator.buffer(string: requestStr)
+        return buffer
     }
     
     /// 创建一个新的 HTTPRequest 实例。
@@ -68,7 +93,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
         url: WebURI,
         version: HTTPVersion = .http1_1,
         headers: HTTPHeaders = [:],
-        body: ByteBuffer? = nil
+        body: HTTPBody? = nil
     ) {
         self.method = method
         self.url = url
@@ -81,42 +106,5 @@ public struct HTTPRequest: Sendable, CustomStringConvertible, BodyCodable {
     public enum Err: String, ErrList {
         public var domain: String { "woo.sys.client.request.err" }
         case requestToDataFailed = "将请求转为 Data 失败"
-    }
-}
-
-extension HTTPRequest: Codable {
-    /// 从解码器中恢复 HTTPRequest 实例。
-    ///
-    /// - Parameter decoder: 解码器。
-    /// - Throws: 如果解码失败，将抛出异常。
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        method = try container.decode(HTTPMethod.self, forKey: .method)
-        url = try container.decode(WebURI.self, forKey: .url)
-        version = try container.decode(HTTPVersion.self, forKey: .version)
-        headers = try container.decode(HTTPHeaders.self, forKey: .headers)
-        body = try container.decode(ByteBuffer?.self, forKey: .body)
-        channel = nil
-    }
-
-    /// 将 HTTPRequest 编码为给定的编码器，用于序列化。
-    ///
-    /// - Parameter encoder: 编码器。
-    /// - Throws: 如果编码失败，将抛出异常。
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(method, forKey: .method)
-        try container.encode(url, forKey: .url)
-        try container.encode(version, forKey: .version)
-        try container.encode(headers, forKey: .headers)
-        try container.encode(body, forKey: .body)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case method
-        case url
-        case version
-        case headers
-        case body
     }
 }
