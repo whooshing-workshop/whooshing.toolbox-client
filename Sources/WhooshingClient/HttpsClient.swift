@@ -8,6 +8,16 @@ import NIOHTTP1
 import AsyncHTTPClient
 import Foundation
 
+/// `HttpsClient` 是一个基于 AsyncHTTPClient 封装的异步 HTTPS 请求客户端，
+/// 提供统一的发送逻辑和错误封装，适用于文件传输等高性能场景。
+///
+/// 该类型的所有接口见协议 `WhooshingClient`
+///
+/// - Warning: 该 HttpsClient 并无任何 Whooshing 自定义加密，使用常规的 HTTPS 加密方式，因此无法
+/// 访问任何 Whooshing 的 API 或 INLINE 子模块的任何服务，仅当用于访问常规的网站服务时使用，且避免使
+/// HTTP 请求(明文)
+///
+/// - Warning: 该类型并没有配置 Backpressure 机制，因此不适合发送大型数据流，谨慎使用
 public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     
     public enum Err: String, ErrList {
@@ -22,27 +32,46 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     public var fileEventLoop: any NIOCore.EventLoop
     public let logger: Logger?
     private let client: HTTPClient
-    
+
+    /// 初始化一个 `HttpsClient` 实例。
+    ///
+    /// - Parameters:
+    ///   - eventLoop: 用于驱动请求执行的 `EventLoop`。
+    ///   - configuration: HTTPClient 的配置，默认为单例配置。
+    ///   - logger: 可选的日志记录器，用于记录请求信息。
     public init(in eventLoop: EventLoop, configuration: HTTPClient.Configuration = .singletonConfiguration, logger: Logger? = nil) {
         self.fileEventLoop = eventLoop
         self.logger = logger
         self.client = HTTPClient(eventLoopGroup: eventLoop, configuration: configuration)
     }
-    
+
+    /// 发送一个 `HTTPRequest` 请求，并返回异步的 `HTTPResponse`。
+    ///
+    /// - Parameter request: 要发送的请求对象。
+    /// - Returns: 一个 `EventLoopFuture`，其结果为 `HTTPResponse`。
+    /// - Throws: 若响应不合法或连接失败，抛出 `HttpsClient.Err` 中定义的错误。
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopFuture<HTTPResponse> {
         fileEventLoop.makeFutureWithTask { try await self.streamingSend(request) }
     }
-    
+
+    /// 析构函数，在实例释放时关闭内部 HTTPClient。
     deinit {
         try? self.client.syncShutdown()
     }
-    
+
+    /// 清除当前上下文中的 HTTP handler（该方法目前为兼容协议所需，实际为空实现）。
+    ///
+    /// - Parameter eventLoop: 所属的 `EventLoop`。
+    /// - Returns: 一个立即完成的 `EventLoopFuture<Void>`。
     public func removeHTTPHandlers(in eventLoop: any NIOCore.EventLoop) -> NIOCore.EventLoopFuture<Void> {
         eventLoop.makeSucceededVoidFuture()
     }
-    
+
+    /// 清除当前上下文中的 HTTP handler（异步接口，实际为空实现）。
+    ///
+    /// - Throws: 无。
     public func removeHTTPHandlers() async throws { return }
 }
 

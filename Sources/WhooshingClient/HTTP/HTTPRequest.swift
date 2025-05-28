@@ -4,8 +4,8 @@ import ErrorHandle
 import Foundation
 import AsyncHTTPClient
 
-/// 表示一个 HTTP 请求，封装了请求方法、URL、HTTP 版本、头部信息、请求体以及相关的 NIO 通道。
-/// 该结构用于在客户端或服务端构建和解析 HTTP 请求。
+/// 表示一个 HTTP 请求，封装了请求方法、URL、版本、头部和请求体，
+/// 提供便于在客户端或服务器中构建、序列化、调试 HTTP 请求的接口。
 public struct HTTPRequest: Sendable, CustomStringConvertible {
     
     /// HTTP 请求方法，例如 GET、POST、PUT 等。
@@ -17,6 +17,10 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     /// HTTP 请求头，用于传递元信息，例如 Content-Type、Authorization 等。
     public var headers: HTTPHeaders
     
+    /// 请求体内容。设置此值时会自动更新相关头部字段：
+    /// - 若为 `.bytes` 类型，则写入 `content-length` 并移除 `transfer-encoding`；
+    /// - 若为 `.stream` 类型，则写入 `transfer-encoding: chunked` 并移除 `content-length`；
+    /// - 若设置为 `nil`，则默认写入 `content-length: 0`，并移除已有的 `content` 相关头字段。
     public var body: HTTPBody? {
         get { __body }
         set {
@@ -45,9 +49,10 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
         }
     }
     
+    /// 内部存储的请求体，供外部 `body` 属性代理访问。
     private var __body: HTTPBody?
     
-    /// 请求的字符串描述，包含请求行、头部和正文，用于日志或调试输出。
+    /// 返回请求的完整字符串表示，包含请求行、头部和正文内容（如为流则显示占位信息）。
     public var description: String {
         let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
         

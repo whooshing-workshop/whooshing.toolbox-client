@@ -17,8 +17,17 @@ public extension ReqClient {
 }
 
 public extension HTTPBody {
+    /// 使用 `ByteBuffer` 创建一个 HTTP 请求体。
+    ///
+    /// - Parameter bytes: 原始字节缓冲区。
+    /// - Returns: 构造的 HTTPBody，类型为 `.bytes`，无特殊 Content-Type。
     static func bytes(_ bytes: ByteBuffer) -> Self { .init(type: .bytes(bytes)) }
     
+    /// 创建一个以任意可能解包失败的 data 转换类型为内容的 HTTP 请求体。
+    ///
+    /// - Parameter data: 要编码的原始数据，其转为字节可能出错。
+    /// - Returns: 包含二进制内容的 `HTTPBody`，其 `Content-Type` 默认为 `application/octet-stream`；若为字符串则为 `text/plain`。
+    /// - Throws: 如果 `data` 转换为字节失败，则抛出相关错误。
     static func data<T: ThrowableDataConvertable>(_ data: T) throws -> Self {
         var headers: HTTPHeaders = ["content-type": "application/octet-stream"]
         if data is String {
@@ -27,20 +36,38 @@ public extension HTTPBody {
         return .init(type: try .bytes(.init(data: data.data())), headers: headers)
     }
     
+    /// 使用纯文本创建 HTTP 请求体。
+    ///
+    /// - Parameter text: 文本字符串。
+    /// - Returns: 构造的 HTTPBody，Content-Type 为 `text/plain`。
+    /// - Throws: 若字符串转换失败将抛出错误。
     static func text(_ text: String) throws -> Self {
         try .data(text)
     }
     
+    /// 使用任意支持安全转换的 data 创建 HTTP 请求体。
+    ///
+    /// - Parameter data: 可转换的数据对象，可安全转换为字节。
+    /// - Returns: 构造的 HTTPBody，类型为 `.bytes`。
     static func data<T: SafeDataConvertable>(_ data: T) -> Self {
         .bytes(.init(data: data.data()))
     }
     
+    /// 使用 `Encodable` 类型创建 JSON 格式的 HTTP 请求体。
+    ///
+    /// - Parameter value: 要编码的可编码对象。
+    /// - Returns: JSON 编码的 HTTPBody，请求头包含 `application/json`。
+    /// - Throws: JSON 编码失败时抛出错误。
     static func json<T: Encodable>(_ value: T) throws -> Self {
         .init(type: .bytes(.init(data: try JSONEncoder().encode(value))), headers: ["content-type": "application/json"])
     }
 }
 
 public extension HTTPBody {
+    /// 创建一个基于异步数据通道的 HTTP 流式请求体。
+    ///
+    /// - Parameter stream: 可抛出元素转换为 `ByteBuffer` 的异步通道。
+    /// - Returns: 流式 HTTPBody。
     static func stream<T: ThrowableDataConvertable & Sendable>(_ stream: AsyncThrowingChannel<T, Error>) -> Self {
         if let stream = stream as? AsyncThrowingChannel<ByteBuffer, Error> {
             return .init(type: .stream(stream))
@@ -60,6 +87,10 @@ public extension HTTPBody {
         }
     }
     
+    /// 创建一个基于异步 JSON 编码的 HTTP 流式请求体。
+    ///
+    /// - Parameter stream: 元素为 `Encodable` 的异步通道。
+    /// - Returns: 流式 JSON 请求体，Content-Type 为 `application/json`。
     static func jsonStream<T: Encodable & Sendable>(_ stream: AsyncThrowingChannel<T, Error>) -> Self {
         if let stream = stream as? AsyncThrowingChannel<ByteBuffer, Error> {
             return .init(type: .stream(stream))
@@ -80,6 +111,10 @@ public extension HTTPBody {
         }
     }
     
+    /// 使用本地文件创建 HTTP 流式请求体。
+    ///
+    /// - Parameter file: 要读取的本地文件路径。
+    /// - Returns: 分块读取的流式 HTTPBody，Content-Type 为 `application/octet-stream`，并附带文件名作为 `content-disposition`。
     static func file(from file: FilePath) -> Self {
         let res = AsyncThrowingChannel<ByteBuffer, Error>()
         Task {

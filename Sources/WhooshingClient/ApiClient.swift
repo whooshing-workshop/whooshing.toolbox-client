@@ -6,9 +6,15 @@ import Logging
 import NIOHTTP1
 import AsyncHTTPClient
 
-/// `ApiClient` 是一个用于发起 API 请求的客户端类，封装了鉴权和请求配置。
+/// 一个用于发起 API 子模块请求的客户端类，封装了鉴权和请求配置。
+/// 并自动将用户凭据与令牌存储在请求上下文中，用于后续认证
 ///
-/// 并自动将用户凭据与令牌存储在请求上下文中，用于后续认证。
+/// 实现了数据流发送的 Backpressure 机制，因此尽管大数据流发送也不会产生内存堆积和泄漏的问题。
+/// 该类型的所有接口见协议 `WhooshingClient`
+///
+/// - Warning: 该请求类型使用了 Whooshing 自定加密，因此无法访问任何常规 HTTP 或 HTTPS
+/// 网站服务，仅应当用于访问 WHooshing 系统的 API 服务子模块。请勿使用 HTTPS 协议请求连线
+/// ，使用 HTTP 即可。
 public final class ApiClient: Sendable {
     
     public var key: Crypto.Symm.Key? {

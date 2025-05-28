@@ -17,6 +17,10 @@ public struct HTTPResponse: Sendable, CustomStringConvertible {
     /// 与响应相关联的底层 NIO 通道（可选），用于网络上下文。
     public weak var channel: Channel?
     
+    /// 请求体内容。设置此值时会自动更新相关头部字段：
+    /// - 若为 `.bytes` 类型，则写入 `content-length` 并移除 `transfer-encoding`；
+    /// - 若为 `.stream` 类型，则写入 `transfer-encoding: chunked` 并移除 `content-length`；
+    /// - 若设置为 `nil`，则默认写入 `content-length: 0`，并移除已有的 `content` 相关头字段。
     public var body: HTTPBody? {
         get { __body }
         set {
