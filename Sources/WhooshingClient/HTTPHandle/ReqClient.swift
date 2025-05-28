@@ -24,7 +24,13 @@ open class ReqClient: @unchecked Sendable {
     
     private weak var __channel: Channel?
     private var lock: NIOLock = .init()
-    private var removableHandlers: [RemovableChannelHandler & Sendable] = []
+    private let removableHandlerNames: [String] = [
+        "Whooshing Crypto Handler",
+        "NIO HTTPRequestEncoder",
+        "NIO HTTPResponseDecoder",
+        "NIO HTTPRequestHeadersValidator",
+        "Whooshing Request Wrapper Handler"
+    ]
     
     public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestCryptoIOHandler? = nil) {
         self.eventLoop = eventLoop
@@ -62,27 +68,33 @@ open class ReqClient: @unchecked Sendable {
         
         let cryptoHandler = RequestCryptoHandler(logger: logger, ioHandler: ioHandler)
         let wrapperHandler = RequestWrapperHandler(logger: logger)
-        
-        self.removableHandlers = [
-            cryptoHandler,
-            HTTPRequestEncoder(configuration: .init()),
-            ByteToMessageHandler(HTTPResponseDecoder(leftOverBytesStrategy: .dropBytes)),
-            NIOHTTPRequestHeadersValidator(),
-            wrapperHandler
-        ]
 
         let bootstrap = ClientBootstrap(group: self.eventLoop)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([
+                    NIOCloseOnErrorHandler(),
+                    RequestBackPressureHandler(),
                     LengthFieldPrepender(lengthFieldLength: .eight, lengthFieldEndianness: .big),
                     ByteToMessageHandler(LengthFieldBasedFrameDecoder(lengthFieldLength: .eight, lengthFieldEndianness: .big))
                 ]).flatMap {
-                    channel.pipeline.addHandlers(self.removableHandlers)
+                    channel.eventLoop.makeFutureWithTask {
+                        let handlers: [ChannelHandler & Sendable] = [
+                            cryptoHandler,
+                            HTTPRequestEncoder(configuration: .init()),
+                            ByteToMessageHandler(HTTPResponseDecoder(leftOverBytesStrategy: .dropBytes)),
+                            NIOHTTPRequestHeadersValidator(),
+                            wrapperHandler
+                        ]
+                        for (i, handler) in handlers.enumerated() {
+                            try await channel.pipeline.addHandler(handler, name: self.removableHandlerNames[i])
+                        }
+                    }
                 }
             }
             .channelOption(.socketOption(.tcp_nodelay), value: 1)
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
             .channelOption(.maxMessagesPerRead, value: 1)
+            .channelOption(.autoRead, value: false)
 
         return bootstrap.connect(host: url.host, port: port).map { channel in
             self.channelPool[id] = channel
@@ -115,17 +127,16 @@ open class ReqClient: @unchecked Sendable {
     }
     
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
-        guard let channel = self.channel else { return eventLoop.makeSucceededVoidFuture() }
-        var r = channel.eventLoop.makeSucceededVoidFuture()
-        for handler in self.removableHandlers {
-            r = r.flatMap {
-                channel.pipeline.removeHandler(handler)
-            }
+        eventLoop.makeFutureWithTask {
+            try await self.removeHTTPHandlers()
         }
-        r = r.flatMapThrowing {
-            self.removableHandlers.removeAll()
+    }
+    
+    public func removeHTTPHandlers() async throws {
+        guard let channel = self.channel else { return }
+        for name in self.removableHandlerNames {
+            try await channel.pipeline.removeHandler(name: name)
         }
-        return r.hop(to: eventLoop)
     }
 
     enum Err: String, ErrList {

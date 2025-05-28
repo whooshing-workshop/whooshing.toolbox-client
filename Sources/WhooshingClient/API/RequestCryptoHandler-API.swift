@@ -32,12 +32,15 @@ enum API {
     
     struct RequestIOCrypto: RequestCryptoIOHandler, Sendable {
         
-        unowned private(set) var client: APIReqClient
+        weak private(set) var client: APIReqClient?
         let logger: Logger?
+        
+        var isAvaliable: Bool { client?.apiRequestIoData != nil }
         
         /// 发送请求时，进行编码并加密
         func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12006)) }
+            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededFuture(data) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12006)) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
@@ -58,7 +61,8 @@ enum API {
 
         /// 收到响应时，进行解密并解码
         func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
-            guard let ioData = client.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12010)) }
+            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededFuture(data) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12010)) }
             let id = ObjectIdentifier(context.channel)
 
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
@@ -68,8 +72,8 @@ enum API {
                 ioData.errorTemps[id] = nil
                 return context.eventLoop.makeFailedFuture(err)
             } else {
-                if let res = try? HTTPResponse(data: data) {
-                    ioData.errorTemps[id] = res.status
+                if let status = lightweightParseHTTP1StatusCode(from: data) {
+                    ioData.errorTemps[id] = status
                     return context.eventLoop.makeSucceededFuture(data)
                 }
             }
@@ -131,9 +135,33 @@ enum API {
         func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> {
             logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
             let id = ObjectIdentifier(context.channel)
-            client.apiRequestIoData?.connectionKeys[id] = nil
-            client.apiRequestIoData?.readingBufferDatas[id] = nil
+            client?.apiRequestIoData?.connectionKeys[id] = nil
+            client?.apiRequestIoData?.readingBufferDatas[id] = nil
             return context.eventLoop.makeSucceededVoidFuture()
+        }
+        
+        func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> HTTPResponseStatus? {
+            // 确保至少有 "HTTP/1.1 200" 这段内容（12 字节）
+            guard buffer.readableBytes >= 12 else {
+                return nil
+            }
+
+            // 获取前 9 个字节，应该是 "HTTP/1.1 "
+            let expectedPrefix = "HTTP/1.1 "
+            let prefixBytes = buffer.getBytes(at: buffer.readerIndex, length: 9)
+
+            guard let actual = prefixBytes, actual == Array(expectedPrefix.utf8) else { return nil }
+
+            // 接下来是状态码 3 字节
+            let statusStart = buffer.readerIndex + 9
+            guard
+                let codeStr = buffer.getString(at: statusStart, length: 3),
+                let code = Int(codeStr)
+            else {
+                return nil
+            }
+
+            return .init(statusCode: code)
         }
     }
 }

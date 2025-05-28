@@ -4,6 +4,7 @@ import DataConvertable
 import Foundation
 import NIOFileSystem
 import ErrorHandle
+import AsyncAlgorithms
 
 public extension ReqClient {
     enum EncodeErr: String, ErrList {
@@ -34,49 +35,70 @@ public extension HTTPBody {
         .bytes(.init(data: data.data()))
     }
     
-    static func json<T: Encodable>(value: T) throws -> Self {
+    static func json<T: Encodable>(_ value: T) throws -> Self {
         .init(type: .bytes(.init(data: try JSONEncoder().encode(value))), headers: ["content-type": "application/json"])
     }
 }
 
 public extension HTTPBody {
-    static func stream<T: ThrowableDataConvertable & Sendable>(_ stream: AsyncThrowingStream<T, Error>) -> Self {
-        if let stream = stream as? AsyncThrowingStream<ByteBuffer, Error> {
+    static func stream<T: ThrowableDataConvertable & Sendable>(_ stream: AsyncThrowingChannel<T, Error>) -> Self {
+        if let stream = stream as? AsyncThrowingChannel<ByteBuffer, Error> {
             return .init(type: .stream(stream))
         } else {
-            return .init(type: .stream(AsyncThrowingStream { writer in
-                Task {
-                    do {
-                        for try await chunk in stream {
-                            writer.yield(.init(data: try chunk.data()))
-                        }
-                        writer.finish()
-                    } catch {
-                        writer.finish(throwing: error)
+            let res = AsyncThrowingChannel<ByteBuffer, Error>()
+            Task {
+                do {
+                    for try await chunk in stream {
+                        await res.send(.init(data: try chunk.data()))
                     }
+                    res.finish()
+                } catch {
+                    res.fail(error)
                 }
-            }))
+            }
+            return .init(type: .stream(res))
+        }
+    }
+    
+    static func jsonStream<T: Encodable & Sendable>(_ stream: AsyncThrowingChannel<T, Error>) -> Self {
+        if let stream = stream as? AsyncThrowingChannel<ByteBuffer, Error> {
+            return .init(type: .stream(stream))
+        } else {
+            let res = AsyncThrowingChannel<ByteBuffer, Error>()
+            Task {
+                let jsonEncoder = JSONEncoder()
+                do {
+                    for try await chunk in stream {
+                        await res.send(.init(data: try jsonEncoder.encode(chunk)))
+                    }
+                    res.finish()
+                } catch {
+                    res.fail(error)
+                }
+            }
+            return .init(type: .stream(res))
         }
     }
     
     static func file(from file: FilePath) -> Self {
-        .init(type: .stream(AsyncThrowingStream { writer in
-            Task {
-                var fileHandle: ReadFileHandle? = nil
-                do {
-                    let fh = try await FileSystem.shared.openFile(forReadingAt: file, options: .init())
-                    fileHandle = fh
-                    for try await chunk in fh.readChunks(chunkLength: .kilobytes(64)) {
-                        writer.yield(chunk)
-                    }
-                    try await fh.close()
-                    writer.finish()
-                } catch {
-                    try await fileHandle?.close()
-                    writer.finish(throwing: ReqClient.EncodeErr.fileOperationUnknowErr.d(14033).subErr(error))
+        let res = AsyncThrowingChannel<ByteBuffer, Error>()
+        Task {
+            var fileHandle: ReadFileHandle? = nil
+            do {
+                let fh = try await FileSystem.shared.openFile(forReadingAt: file, options: .init())
+                fileHandle = fh
+                for try await chunk in fh.readChunks(chunkLength: .kilobytes(64)) {
+                    await res.send(chunk)
                 }
+                try await fh.close()
+                res.finish()
+            } catch {
+                try await fileHandle?.close()
+                res.fail(ReqClient.EncodeErr.fileOperationUnknowErr.d(14033).subErr(error))
             }
-        }), headers: [
+        }
+        
+        return .init(type: .stream(res), headers: [
             "content-type": "application/octet-stream",
             "content-disposition": file.lastComponent?.string ?? ""
         ])

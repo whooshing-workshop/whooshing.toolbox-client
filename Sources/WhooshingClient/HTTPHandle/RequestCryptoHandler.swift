@@ -1,17 +1,14 @@
 import Cryptos
 import ErrorHandle
 import NIOCore
-import NIOConcurrencyHelpers
-import Foundation
 import Logging
-import AsyncHTTPClient
 
 // 用于处理请求客户端与服务器之间的加密机制
 
 /// 定义了处理 HTTP 请求输入输出的接口协议，支持发送请求与接收响应的异步操作。
 /// 可用于实现加密通信、流式传输、或自定义的请求/响应处理器。
 public protocol RequestCryptoIOHandler: Sendable {
-
+    var isAvaliable: Bool { get }
     /// 发送一个 HTTP 请求的数据块。
     ///
     /// - Parameters:
@@ -47,6 +44,7 @@ public protocol RequestCryptoIOHandler: Sendable {
 }
 
 public extension RequestCryptoIOHandler {
+    var isAvaliable: Bool { true }
     func connectionStart(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
     func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
 }
@@ -56,7 +54,7 @@ final class RequestCryptoHandler: ChannelDuplexHandler, RemovableChannelHandler,
     typealias InboundOut = ByteBuffer
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = ByteBuffer
-
+    
     private let logger: Logger?
     private let ioHandler: RequestCryptoIOHandler
 
@@ -66,24 +64,20 @@ final class RequestCryptoHandler: ChannelDuplexHandler, RemovableChannelHandler,
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard ioHandler.isAvaliable else { return }
         let buffer = unwrapOutboundIn(data)
         ioHandler.get(data: buffer, context: context).whenComplete { res in
             switch res {
             case .success(let response): context.fireChannelRead(self.wrapOutboundOut(response))
-            case .failure(let err): self.errorCaught(context: context, error: err)
-            }
+            case .failure(let err): self.errorCaught(context: context, error: err) }
         }
     }
     
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        guard ioHandler.isAvaliable else { return }
         let buffer = unwrapInboundIn(data)
         let res = ioHandler.send(data: buffer, context: context).flatMap { res in
-            if buffer.readableBytes > 0 {
-                return context.write(self.wrapOutboundOut(res))
-            } else {
-                context.flush()
-                return context.eventLoop.makeSucceededVoidFuture()
-            }
+            context.writeAndFlush(self.wrapOutboundOut(res))
         }
         
         if let p = promise {

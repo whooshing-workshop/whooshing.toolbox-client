@@ -20,11 +20,10 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     public var version: HTTPVersion
     /// HTTP 请求头，用于传递元信息，例如 Content-Type、Authorization 等。
     public var headers: HTTPHeaders
-    /// 与该请求关联的 NIO 通道，可能为 nil。用于底层网络通信上下文。
-    public weak var channel: Channel?
     
     public var body: HTTPBody? {
-        willSet {
+        get { __body }
+        set {
             if let body = newValue {
                 switch body.type {
                 case .bytes(let bytes):
@@ -40,14 +39,17 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
             } else {
                 self.headers.remove(name: "transfer-encoding")
                 self.headers.replaceOrAdd(name: "content-length", value: "0")
-                if let body = body {
+                if let body = __body {
                     for (name, _) in body.headers {
                         self.headers.remove(name: name)
                     }
                 }
             }
+            __body = newValue
         }
     }
+    
+    private var __body: HTTPBody?
     
     /// 请求的字符串描述，包含请求行、头部和正文，用于日志或调试输出。
     public var description: String {
@@ -73,7 +75,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     /// - Returns: 一个元组，第一个元素是包含请求行和头部的 ByteBuffer，第二个是可选的正文 ByteBuffer。
     /// - Throws: 若转换过程中出现错误，可能抛出异常。
     public func headData(allocator: ByteBufferAllocator = .init()) -> ByteBuffer {
-        var requestStr = "\(method.rawValue) \(url) HTTP/1.1\r\n"
+        var requestStr = "\(method.rawValue) \(url.queryPath) HTTP/1.1\r\n"
         headers.forEach { (name, value) in requestStr += "\(name): \(value)\r\n" }
         requestStr += "\r\n"
         let buffer = allocator.buffer(string: requestStr)

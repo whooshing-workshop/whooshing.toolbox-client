@@ -1,4 +1,5 @@
 import NIOCore
+import AsyncAlgorithms
 import NIOHTTP1
 import DataConvertable
 import Foundation
@@ -20,40 +21,66 @@ public extension HTTPBody {
     
     func text() throws -> String { try self.data() }
     
-    func data<T: ThrowableDataConvertable>() throws -> T {
+    func data<T: ThrowableDataConvertable>(as: T.Type = T.self) throws -> T {
         guard case let .bytes(buffer) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(15009) }
         return try T.init(data: buffer.data())
     }
     
-    func data<T: SafeDataConvertable>() throws -> T {
+    func data<T: SafeDataConvertable>(as: T.Type = T.self) throws -> T {
         guard case let .bytes(buffer) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(15010) }
         return T.init(data: buffer.data())
     }
     
-    func json<T: Decodable>(as: T.Type) throws -> T {
+    func json<T: Decodable>(as: T.Type = T.self) throws -> T {
         guard case let .bytes(buffer) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150011) }
         return try JSONDecoder().decode(T.self, from: buffer)
     }
 }
 
 public extension HTTPBody {
-    func stream<T: ThrowableDataConvertable & Sendable>() throws -> AsyncThrowingStream<T, Error> {
+    func stream() throws -> AsyncThrowingChannel<ByteBuffer, Error> {
+        try self.stream(as: ByteBuffer.self)
+    }
+    
+    func stream<T: ThrowableDataConvertable & Sendable>(as: T.Type = T.self) throws -> AsyncThrowingChannel<T, Error> {
         guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150012) }
         if T.self == ByteBuffer.self {
-            return stream as! AsyncThrowingStream<T, Error>
+            return stream as! AsyncThrowingChannel<T, Error>
         } else {
-            return AsyncThrowingStream { writer in
-                Task {
-                    do {
-                        for try await chunk in stream {
-                            writer.yield(try .init(data: .init(buffer: chunk)))
-                        }
-                        writer.finish()
-                    } catch {
-                        writer.finish(throwing: error)
+            let res = AsyncThrowingChannel<T, Error>()
+            Task {
+                do {
+                    for try await chunk in stream {
+                        await res.send(try .init(data: .init(buffer: chunk)))
                     }
+                    res.finish()
+                } catch {
+                    res.fail(error)
                 }
             }
+            return res
+        }
+    }
+    
+    func jsonStream<T: Decodable & Sendable>(as: T.Type = T.self) throws -> AsyncThrowingChannel<T, Error> {
+        guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150012) }
+        if T.self == ByteBuffer.self {
+            return stream as! AsyncThrowingChannel<T, Error>
+        } else {
+            let res = AsyncThrowingChannel<T, Error>()
+            Task {
+                let decoder = JSONDecoder()
+                do {
+                    for try await chunk in stream {
+                        let data = try decoder.decode(T.self, from: chunk)
+                        await res.send(data)
+                    }
+                    res.finish()
+                } catch {
+                    res.fail(error)
+                }
+            }
+            return res
         }
     }
     

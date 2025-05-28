@@ -51,6 +51,10 @@ public final class ApiClient: Sendable {
         self.client.removeHTTPHandlers(in: eventLoop)
     }
     
+    public func removeHTTPHandlers() async throws {
+        try await self.client.removeHTTPHandlers()
+    }
+    
     #if WHOOSHING_VAPOR
     /// 使用 Vapor `Application` 实例初始化 API 客户端。
     ///
@@ -83,10 +87,9 @@ public final class ApiClient: Sendable {
 /// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
     public func send(
-        _ request: HTTPRequest,
-        afterSend: @escaping AfterSendAction
+        _ request: HTTPRequest
     ) -> EventLoopFuture<HTTPResponse> {
-        client.send(request, afterSend: afterSend)
+        client.send(request)
     }
 
     public var fileEventLoop: any EventLoop { client.fileEventLoop }

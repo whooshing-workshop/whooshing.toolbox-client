@@ -41,14 +41,11 @@ final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
     }
     
     func send(
-        _ request: HTTPRequest,
-        afterSend: @escaping AfterSendAction
+        _ request: HTTPRequest
     ) -> EventLoopFuture<HTTPResponse> {
-        return self.makeChannel(url: request.url).flatMap { (channel, handler, domain) in
+        self.makeChannel(url: request.url).flatMap { (channel, handler, domain) in
             self.logger?.info("API.Client-发送请求: \(channel.clientAddrInfo)")
-            return self._send(request: request, channel: channel, handler: handler, domain: domain).flatMap { res in
-                afterSend(channel).map { res }
-            }
+            return self._send(request: request, channel: channel, handler: handler, domain: domain)
         }
     }
 
@@ -88,13 +85,12 @@ final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
             let tokenKey = Crypto.Symm.Key(data: token)
             let tokenEncrypted = try Crypto.Symm.encrypt(token, key: tokenKey)
             self.logger?.trace("API.Client-认证中: 将凭据和加密后的用户口令进行 json 编码")
-            guard let body = try? JSONEncoder().encode(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)) else { return eventLoop.makeFailedFuture(ApiClient.InternalErr.unknowErr.d("JSON 编码失败", 14001)) }
             self.logger?.trace("API.Client-认证中: 发送用户凭据以及用户口令")
             var headers: HTTPHeaders = ["content-type": "application/json"]
             if let domain = domain {
                 headers.replaceOrAdd(name: "host", value: domain)
             }
-            let req = HTTPRequest(method: .POST, url: request.url, headers: headers, body: .bytes(ByteBuffer(data: body)))
+            let req = HTTPRequest(method: .POST, url: request.url, headers: headers, body: try! .json(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)))
             return self.send(req, channel: channel, handler: handler).flatMapThrowing { res in
                 self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
                 guard res.status == .ok else { throw ApiClient.Err.badResponse.d(14002).adds(res.status) }

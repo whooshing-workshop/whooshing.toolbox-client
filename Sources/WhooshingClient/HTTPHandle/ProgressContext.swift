@@ -1,4 +1,5 @@
 import Foundation
+import AsyncAlgorithms
 import NIOCore
 
 #if WHOOSHING_VAPOR
@@ -10,17 +11,17 @@ import Vapor
 ///
 /// `ProgressContext` 用于追踪任务的当前进度，包括已传输字节数、总字节数、耗时、速度等信息，
 /// 同时携带与该任务相关的通道信息和用户自定义的响应值。
-public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Value: Sendable {
+public struct ProgressContext: Sendable, CustomStringConvertible {
     
     /// 当前任务在整个进度列表中的索引编号（适用于分片或批量任务）。
     public let index: Int
 
-    /// 当前任务的数据缓冲区。
-    public let data: ByteBuffer
-
     /// 是否已完成任务。
     public let done: Bool
 
+    /// 正处理的数据块的大小
+    public let bytes: Int
+    
     /// 当前已传输或处理的字节数。
     public let curBytes: Int
 
@@ -29,12 +30,15 @@ public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Va
 
     /// 任务开始的时间。
     public let startDate: Date
-
-    /// 与该任务关联的通道（如网络连接、文件流等）。
-    public private(set) weak var channel: Channel?
-
-    /// 与该进度上下文相关联的用户自定义响应值。
-    public let response: Value
+    
+    public init(index: Int = 0, done: Bool = false, bytes: Int = 0, curBytes: Int = 0, totalBytes: Int? = nil, startDate: Date = Date()) {
+        self.index = index
+        self.done = done
+        self.curBytes = curBytes
+        self.totalBytes = totalBytes
+        self.startDate = startDate
+        self.bytes = bytes
+    }
 
     /// 当前字节传输进度（0~1），如果 `totalBytes` 未知或为 0，则为 `nil`。
     public var bytesPersentage: Double? {
@@ -59,48 +63,168 @@ public struct ProgressContext<Value>: Sendable, CustomStringConvertible where Va
         ChunkTool.formatByteSize(curBytes)
     }
 
-    /// 与 `totalBytesStr` 相同，用于统一显示总大小。
-    public var totalSize: String {
-        totalBytes == nil ? "~B" : ChunkTool.formatByteSize(totalBytes!)
-    }
-
     /// 当前的传输速度（字节每秒），如果耗时为 0 则为 `nil`。
     public var speed: Double? {
-        Int(timeCost) <= 0 ? nil : (Double(curBytes) / Double(timeCost))
+        let timeCost = Double(timeCost)
+        if timeCost > 0 {
+            return (Double(curBytes) / timeCost)
+        } else {
+            return nil
+        }
     }
 
-    /// 格式化的传输速度字符串（例如 "1.2 MB/s"），如果无法计算则返回 `"~B/s"`。
+    /// 格式化的传输速度字符串（例如 "1.2MB/s"），如果无法计算则返回 `"~B/s"`。
     public var speedStr: String {
-        speed == nil ? "~B/s" : (ChunkTool.formatByteSize(.init(speed!)) + "/s")
+        if let speed = self.speed {
+            return ChunkTool.formatByteSize(.init(speed)) + "/s"
+        } else {
+            return "~B/s"
+        }
     }
 
-    /// 当前任务已耗费的时间（单位：秒）。
+    /// 当前任务已耗费的时间字符串（单位：秒）。
     public var timeCost: TimeInterval {
         Date().timeIntervalSince(startDate)
+    }
+    
+    public var timeCostStr: String {
+        String(format: "%.6fs", self.timeCost)
     }
 
     /// 返回当前进度上下文的字符串描述，方便调试和日志记录。
     public var description: String {
-        let valueStr: String
-        if self.response is ExpressibleByNilLiteral {
-            // 此处必须如此才能判断正确，忽略这个 warning，勿修改
-            valueStr = self.response as! Any? == nil ? "false" : "true"
-        } else {
-            valueStr = String(describing: Value.self)
-        }
-        return "Progress(\(index), 字节进度: \(bytesPersentageStr) [\(curBytesStr)(\(curBytes))-\(totalBytesStr)(\(totalBytes == nil ? "~" : String(totalBytes!)))], 数据块: \(data.readableBytes), 完成: \(done), 耗时: \(timeCost)s, 速度: \(speedStr), 回应: \(valueStr))"
-    }
-
-    /// 创建一个新的 `ProgressContext` 实例，保留原有数据，仅替换 `response`。
-    ///
-    /// - Parameters:
-    ///   - value: 新的响应值。
-    /// - Returns: 新的 `ProgressContext`，除了 `response` 外其他内容与当前实例相同。
-    public func copy<T>(value: T) -> ProgressContext<T> {
-        .init(index: index, data: data, done: done, curBytes: curBytes, totalBytes: totalBytes, startDate: startDate, channel: channel, response: value)
+        "Progress(\(index), 字节进度: \(bytesPersentageStr) [\(curBytesStr)(\(curBytes))-\(totalBytesStr)(\(totalBytes == nil ? "~" : String(totalBytes!)))], 大小: \(bytes), 完成: \(done), 耗时: \(timeCostStr), 速度: \(speedStr))"
     }
     
-    public func next(_ data: ByteBuffer, done: Bool = false) -> Self {
-        .init(index: index + 1, data: data, done: done, curBytes: curBytes + data.readableBytes, totalBytes: totalBytes, startDate: startDate, channel: channel, response: response)
+    public func next(_ dataSize: Int, done: Bool = false) -> Self {
+        .init(index: index + 1, done: done, bytes: dataSize, curBytes: curBytes + dataSize, totalBytes: totalBytes, startDate: startDate)
+    }
+}
+
+public struct AsyncProgressChannel<DataType>: AsyncSequence where DataType: Collection & Sendable {
+    public typealias Element = (ProgressContext, DataType)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncChannel<DataType>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = await base.next() }
+            guard let current = next else { return nil }
+            next = await base.next()
+            progress = progress.next(current.count, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+public struct AsyncProgressThrowingChannel<DataType, Failure>: AsyncSequence where DataType: Collection & Sendable, Failure: Error {
+    public typealias Element = (ProgressContext, DataType)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncThrowingChannel<DataType, Failure>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = try await base.next() }
+            guard let current = next else { return nil }
+            next = try await base.next()
+            progress = progress.next(current.count, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+public struct AsyncProgressByteBufferChannel: AsyncSequence {
+    public typealias Element = (ProgressContext, ByteBuffer)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncChannel<ByteBuffer>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = await base.next() }
+            guard let current = next else { return nil }
+            next = await base.next()
+            progress = progress.next(current.readableBytes, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+public struct AsyncProgressThrowingByteBufferChannel<Failure>: AsyncSequence where Failure: Error {
+    public typealias Element = (ProgressContext, ByteBuffer)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncThrowingChannel<ByteBuffer, Failure>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = try await base.next() }
+            guard let current = next else { return nil }
+            next = try await base.next()
+            progress = progress.next(current.readableBytes, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+extension AsyncChannel where Element: Collection {
+    public func withProgress() -> AsyncProgressChannel<Element> {
+        .init(base: self)
+    }
+}
+
+extension AsyncThrowingChannel where Element: Collection {
+    public func withProgress() -> AsyncProgressThrowingChannel<Element, Failure> {
+        .init(base: self)
+    }
+}
+
+extension AsyncChannel where Element == ByteBuffer {
+    public func withProgress() -> AsyncProgressByteBufferChannel {
+        .init(base: self)
+    }
+}
+
+extension AsyncThrowingChannel where Element == ByteBuffer {
+    public func withProgress() -> AsyncProgressThrowingByteBufferChannel<Failure> {
+        .init(base: self)
     }
 }

@@ -1,4 +1,5 @@
 import Cryptos
+import AsyncAlgorithms
 import ErrorHandle
 import NIOConcurrencyHelpers
 import NIO
@@ -33,8 +34,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     }
     
     public func send(
-        _ request: HTTPRequest,
-        afterSend: AfterSendAction
+        _ request: HTTPRequest
     ) -> EventLoopFuture<HTTPResponse> {
         fileEventLoop.makeFutureWithTask { try await self.streamingSend(request) }
     }
@@ -46,6 +46,8 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     public func removeHTTPHandlers(in eventLoop: any NIOCore.EventLoop) -> NIOCore.EventLoopFuture<Void> {
         eventLoop.makeSucceededVoidFuture()
     }
+    
+    public func removeHTTPHandlers() async throws { return }
 }
 
 extension HttpsClient {
@@ -55,6 +57,9 @@ extension HttpsClient {
         var req = HTTPClientRequest(url: request.url.string)
         req.method = request.method
         req.headers = request.headers
+        
+        try await Curl.isUriConnectable(request.url.string)
+        
         if let body = request.body {
             switch body.type {
             case .bytes(let bytes): req.body = .bytes(bytes)
@@ -67,24 +72,23 @@ extension HttpsClient {
         var res = HTTPResponse(status: response.status, version: response.version, headers: response.headers)
         
         for h in response.headers {
-            if h.name == "content-type" {
+            if h.name == "content-length" {
                 guard let bodySize = Int(h.value) else {
                     throw Err.responseNotValid.d("content-type 头大小解析失败", 15004)
                 }
                 res.body = .bytes(try await response.body.collect(upTo: bodySize))
                 return res
             } else if h.name == "transfer-encoding" && h.value.lowercased() == "chunked" {
-                var iterator = response.body.makeAsyncIterator()
-                let (stream, writer) = AsyncThrowingStream<ByteBuffer, Error>.makeStream()
+                let stream = AsyncThrowingChannel<ByteBuffer, Error>()
                 // 异步收集流数据
                 Task {
                     do {
-                        while let chunk = try await iterator.next() {
-                            writer.yield(chunk)
+                        for try await chunk in response.body {
+                            await stream.send(chunk)
                         }
-                        writer.finish()
+                        stream.finish()
                     } catch {
-                        writer.finish(throwing: error)
+                        stream.fail(error)
                     }
                 }
                 res.body = .stream(stream)
