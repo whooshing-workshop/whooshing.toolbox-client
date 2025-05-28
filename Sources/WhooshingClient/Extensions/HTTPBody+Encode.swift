@@ -113,23 +113,33 @@ public extension HTTPBody {
     
     /// 使用本地文件创建 HTTP 流式请求体。
     ///
-    /// - Parameter file: 要读取的本地文件路径。
+    /// - Parameter:
+    ///   - file: 要读取的本地文件路径。
+    ///   - progress: 文件发出的进度回调。
+    ///
     /// - Returns: 分块读取的流式 HTTPBody，Content-Type 为 `application/octet-stream`，并附带文件名作为 `content-disposition`。
-    static func file(from file: FilePath) -> Self {
+    static func file(from file: FilePath, progress: AsyncProgress? = nil) -> Self {
         let res = AsyncThrowingChannel<ByteBuffer, Error>()
         Task {
             var fileHandle: ReadFileHandle? = nil
             do {
                 let fh = try await FileSystem.shared.openFile(forReadingAt: file, options: .init())
                 fileHandle = fh
+                
+                let info = try await fh.info()
+                progress?.totalBytes = Int(info.size)
+                
                 for try await chunk in fh.readChunks(chunkLength: .kilobytes(64)) {
                     await res.send(chunk)
+                    progress?.sendProgress(chunk.readableBytes)
                 }
                 try await fh.close()
                 res.finish()
+                progress?.finish()
             } catch {
                 try await fileHandle?.close()
                 res.fail(ReqClient.EncodeErr.fileOperationUnknowErr.d(14033).subErr(error))
+                progress?.finish(throwing: error)
             }
         }
         

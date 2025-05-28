@@ -146,3 +146,152 @@ extension AsyncThrowingChannel where Element == ByteBuffer {
         .init(base: self)
     }
 }
+
+
+
+
+/// 为 `AsyncStream` 提供附带进度信息的异步序列包装。
+///
+/// 每次迭代时返回 `(ProgressContext, DataType)`，用于追踪当前处理位置。
+/// 适用于元素类型为 `Collection` 的通道。
+public struct AsyncProgressStream<DataType>: AsyncSequence where DataType: Collection & Sendable {
+    public typealias Element = (ProgressContext, DataType)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncStream<DataType>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = await base.next() }
+            guard let current = next else { return nil }
+            next = await base.next()
+            progress = progress.next(current.count, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+/// 为 `AsyncThrowingStream` 提供附带进度信息的异步序列包装。
+///
+/// 每次迭代返回 `(ProgressContext, DataType)`，可抛出错误。
+/// 适用于元素类型为 `Collection` 的抛出通道。
+public struct AsyncProgressThrowingStream<DataType, Failure>: AsyncSequence where DataType: Collection & Sendable, Failure: Error {
+    public typealias Element = (ProgressContext, DataType)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncThrowingStream<DataType, Failure>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = try await base.next() }
+            guard let current = next else { return nil }
+            next = try await base.next()
+            progress = progress.next(current.count, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+/// 针对 `ByteBuffer` 的 `AsyncStream` 提供附带进度的包装序列。
+///
+/// 每次迭代返回 `(ProgressContext, ByteBuffer)`，以 `readableBytes` 计算进度。
+public struct AsyncProgressByteBufferStream: AsyncSequence {
+    public typealias Element = (ProgressContext, ByteBuffer)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncStream<ByteBuffer>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = await base.next() }
+            guard let current = next else { return nil }
+            next = await base.next()
+            progress = progress.next(current.readableBytes, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+/// 针对 `ByteBuffer` 的 `AsyncThrowingStream` 提供附带进度的包装序列。
+///
+/// 每次迭代返回 `(ProgressContext, ByteBuffer)`，以 `readableBytes` 计算进度，可能抛出错误。
+public struct AsyncProgressThrowingByteBufferStream<Failure>: AsyncSequence where Failure: Error {
+    public typealias Element = (ProgressContext, ByteBuffer)
+    public typealias AsyncIterator = Iterator
+    typealias Base = AsyncThrowingStream<ByteBuffer, Failure>
+    
+    var base: Base
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        var base: Base.Iterator
+        var progress = ProgressContext(index: -1)
+        var next: Base.Iterator.Element?
+
+        public mutating func next() async throws -> Element? {
+            if next == nil { next = try await base.next() }
+            guard let current = next else { return nil }
+            next = try await base.next()
+            progress = progress.next(current.readableBytes, done: next == nil)
+            return (progress, current)
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator())
+    }
+}
+
+extension AsyncStream where Element: Collection & Sendable {
+    /// 返回一个带进度信息的异步通道包装器。
+    public func withProgress() -> AsyncProgressStream<Element> {
+        .init(base: self)
+    }
+}
+
+extension AsyncThrowingStream where Element: Collection & Sendable {
+    /// 返回一个带进度信息的抛出异步通道包装器。
+    public func withProgress() -> AsyncProgressThrowingStream<Element, Failure> {
+        .init(base: self)
+    }
+}
+
+extension AsyncStream where Element == ByteBuffer {
+    /// 返回一个针对 ByteBuffer 的带进度异步通道包装器。
+    public func withProgress() -> AsyncProgressByteBufferStream {
+        .init(base: self)
+    }
+}
+
+extension AsyncThrowingStream where Element == ByteBuffer {
+    /// 返回一个针对 ByteBuffer 的带进度抛出异步通道包装器。
+    public func withProgress() -> AsyncProgressThrowingByteBufferStream<Failure> {
+        .init(base: self)
+    }
+}
