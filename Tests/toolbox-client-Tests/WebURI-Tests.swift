@@ -84,18 +84,21 @@ struct WebURITests {
     func testEmptyPathDefaultsToSlash() {
         let uri = WebURI(scheme: .https, host: "abc.com", path: "")
         #expect(uri.path == "/")
+        #expect(uri.queryPath == "/")
     }
     
     @Test("默认 path 应为 /")
     func testDefaultPathDefaultsToSlash() {
         let uri = WebURI(scheme: .https, host: "abc.com")
         #expect(uri.path == "/")
+        #expect(uri.queryPath == "/")
     }
 
     @Test("只提供 host 的简洁构造")
     func testOnlyHost() {
         let uri = WebURI(scheme: .http, host: "localhost")
         #expect(uri.path == "/")
+        #expect(uri.queryPath == "/")
         #expect(uri.port == nil)
         #expect(uri.query == nil)
         #expect(uri.fragment == nil)
@@ -130,5 +133,12 @@ struct WebURITests {
         #expect(decoded.query == original.query)
         #expect(decoded.fragment == original.fragment)
         #expect(decoded.string == original.string)
+    }
+    
+    @Test("空 Path")
+    func testEmptyPath() throws {
+        let url = try WebURI(string: "http://localhost:5678")
+        #expect(url.path == "/")
+        #expect(url.queryPath == "/")
     }
 }

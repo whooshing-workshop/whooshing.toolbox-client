@@ -71,7 +71,7 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         self.query = url.query
         self.fragment = url.fragment
         self.string = Self.combineURI(scheme: scheme, host: host, port: self.port, path: self.path, query: self.query, fragment: self.fragment)
-        self.queryPath = (url.path + (url.query == nil ? "" : "?\(url.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        self.queryPath = (self.path + (self.query == nil ? "" : "?\(self.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
     }
     
     /// 根据各个组成部分构造 WebURI。
@@ -126,7 +126,7 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         self.fragment = fragment
         
         self.string = Self.combineURI(scheme: scheme, host: host, port: port, path: path, query: self.query, fragment: fragment)
-        self.queryPath = (path + (self.query == nil ? "" : "?\(self.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        self.queryPath = (self.path + (self.query == nil ? "" : "?\(self.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
     }
     
     /// URI 解析过程中可能抛出的错误类型。
