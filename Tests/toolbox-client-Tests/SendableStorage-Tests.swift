@@ -8,12 +8,12 @@ import Vapor
 @Suite("SendableStorage Tests")
 struct SendableStorageTests {
 
-    struct FooKey: StorageKey {
+    struct FooKey: SendableStorage.Key {
         static let defaultValue = "default"
         typealias Value = String
     }
 
-    struct BarKey: StorageKey {
+    struct BarKey: SendableStorage.Key {
         typealias Value = Int
     }
 

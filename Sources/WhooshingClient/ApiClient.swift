@@ -6,10 +6,6 @@ import Logging
 import NIOHTTP1
 import AsyncHTTPClient
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 /// `ApiClient` 是一个用于发起 API 请求的客户端类，封装了鉴权和请求配置。
 ///
 /// 并自动将用户凭据与令牌存储在请求上下文中，用于后续认证。
@@ -54,22 +50,6 @@ public final class ApiClient: Sendable {
     public func removeHTTPHandlers() async throws {
         try await self.client.removeHTTPHandlers()
     }
-    
-    #if WHOOSHING_VAPOR
-    /// 使用 Vapor `Application` 实例初始化 API 客户端。
-    ///
-    /// 此构造函数会使用 Vapor 提供的事件循环组、日志器和 ByteBuffer 分配器来配置底层客户端，
-    /// 并将用户凭证与令牌存储到请求上下文中，供后续身份验证使用。
-    ///
-    /// - Parameters:
-    ///   - credential: 用户凭据（Base64 编码的字符串）。
-    ///   - token: 用户令牌（Base64 编码的字符串）。
-    ///   - app: 当前的 Vapor 应用实例。
-    public init(credential: String, token: String, app: Application) {
-        self.client = .new(eventLoop: app.eventLoopGroup.next(), logger: app.logger, byteBufferAllocator: app.allocator)
-        client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
-    }
-    #endif
     
     /// 关闭所有正在进行的连线
     public func closeAll() async {

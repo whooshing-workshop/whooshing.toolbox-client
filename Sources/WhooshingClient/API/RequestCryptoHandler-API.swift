@@ -7,16 +7,12 @@ import NIOHTTP1
 import Foundation
 import AsyncHTTPClient
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 extension APIReqClient {
     var apiRequestIoData: API.RequestIOData? { self.storage[API.RequestIOData.self] }
 }
 
 enum API {
-    final class RequestIOData: StorageKey, Sendable {
+    final class RequestIOData: SendableStorage.Key, Sendable {
         typealias Value = RequestIOData
         let credential: String
         let token: String

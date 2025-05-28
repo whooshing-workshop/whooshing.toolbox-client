@@ -2,10 +2,6 @@ import Cryptos
 import NIOCore
 import NIOHTTP1
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 /// 客户端协议，定义了与服务器交互的各种方法
 public protocol WhooshingClient: AnyObject,Sendable {
     

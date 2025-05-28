@@ -4,10 +4,6 @@ import ErrorHandle
 import Foundation
 import AsyncHTTPClient
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 /// 表示一个 HTTP 响应，包含状态码、版本、头部信息、正文内容和相关通道。
 /// 适用于客户端与服务端的 HTTP 响应处理和构造。
 public struct HTTPResponse: Sendable, CustomStringConvertible {
@@ -97,40 +93,3 @@ public struct HTTPResponse: Sendable, CustomStringConvertible {
         case unknowErr = "解析响应时出现未知错误"
     }
 }
-
-#if WHOOSHING_VAPOR
-
-extension HTTPResponse: AsyncResponseEncodable {
-    public func encodeResponse(for request: Request) async throws -> Response {
-        return try await encodeResponse(for: request).get()
-    }
-}
-
-extension HTTPResponse: ResponseEncodable {
-    public func encodeResponse(for request: Request) -> EventLoopFuture<Response> {
-        request.eventLoop.makeFutureWithTask {
-            let b: Response.Body
-            if let body = self.body?.type {
-                switch body {
-                case .bytes(let bytes): b = .init(buffer: bytes)
-                case .stream(let asyncBytes):
-                    b = .init(asyncStream: { writer in
-                        for try await chunk in asyncBytes {
-                            try await writer.write(.buffer(chunk))
-                        }
-                    })
-                }
-            } else {
-                b = .empty
-            }
-            return Response(
-                status: self.status,
-                version: self.version,
-                headers: self.headers,
-                body: b
-            )
-        }
-    }
-}
-
-#endif

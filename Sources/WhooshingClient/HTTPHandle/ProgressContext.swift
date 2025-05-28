@@ -2,11 +2,6 @@ import Foundation
 import AsyncAlgorithms
 import NIOCore
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
-
 /// 表示某个数据传输或处理任务的进度上下文。
 ///
 /// `ProgressContext` 用于追踪任务的当前进度，包括已传输字节数、总字节数、耗时、速度等信息，

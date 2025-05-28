@@ -7,10 +7,6 @@ import NIOHTTP1
 import Foundation
 import AsyncHTTPClient
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 public extension ApiClient {
     enum Err: String, ErrList {
         public typealias ErrType = HTTPResponseError
@@ -31,7 +27,7 @@ public extension ApiClient {
     }
 }
 
-final class APIReqClient: ReqClient, StorageKey, @unchecked Sendable {
+final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
     typealias Value = APIReqClient
 
     static func new(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator) -> Self {

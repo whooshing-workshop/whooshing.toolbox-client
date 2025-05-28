@@ -8,10 +8,6 @@ import NIOHTTP1
 import AsyncHTTPClient
 import Foundation
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     
     public enum Err: String, ErrList {

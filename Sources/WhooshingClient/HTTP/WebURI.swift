@@ -1,10 +1,6 @@
 import ErrorHandle
 import Foundation
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 /// 表示一个 Web URI（统一资源标识符），支持标准的 HTTP/HTTPS/WS/WSS 协议解析与构造。
 /// 提供便捷的字符串初始化、路径、查询参数、片段等组成部分访问功能。
 /// 支持字符串字面量初始化、描述输出、序列化与发送。
@@ -164,13 +160,3 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         return res
     }
 }
-
-#if WHOOSHING_VAPOR
-
-public extension WebURI {
-    var uri: URI {
-        .init(stringLiteral: self.string)
-    }
-}
-
-#endif

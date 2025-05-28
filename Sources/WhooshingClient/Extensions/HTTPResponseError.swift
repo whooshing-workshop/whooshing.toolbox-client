@@ -1,11 +1,7 @@
 import ErrorHandle
 import NIOHTTP1
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
-/// 表示一个带有 HTTP 响应状态码的错误类型，可用于 Web 框架（如 Vapor）中统一处理错误响应。
+/// 表示一个带有 HTTP 响应状态码的错误类型
 public struct HTTPResponseError: Err {
     /// 附加类型为 HTTP 响应状态码（HTTPResponseStatus）
     public typealias AdditionType = HTTPResponseStatus
@@ -51,8 +47,3 @@ public struct HTTPResponseError: Err {
         new.__status = status
     }
 }
-
-#if WHOOSHING_VAPOR
-/// 当使用 Vapor 框架时，将该错误类型扩展为 AbortError，使其可用于响应错误中断
-extension HTTPResponseError: AbortError {}
-#endif

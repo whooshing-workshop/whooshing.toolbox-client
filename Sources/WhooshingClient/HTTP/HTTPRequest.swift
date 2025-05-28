@@ -4,10 +4,6 @@ import ErrorHandle
 import Foundation
 import AsyncHTTPClient
 
-#if WHOOSHING_VAPOR
-import Vapor
-#endif
-
 /// 表示一个 HTTP 请求，封装了请求方法、URL、HTTP 版本、头部信息、请求体以及相关的 NIO 通道。
 /// 该结构用于在客户端或服务端构建和解析 HTTP 请求。
 public struct HTTPRequest: Sendable, CustomStringConvertible {
