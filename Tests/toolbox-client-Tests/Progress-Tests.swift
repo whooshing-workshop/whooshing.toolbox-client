@@ -35,7 +35,7 @@ struct ProgressTests {
         
         var seen: [ProgressContext] = []
 
-        for ctx in Progress(pieces: step, bytes: totalSize) {
+        for ctx in try! Progress(pieces: step, bytes: totalSize) {
             print(ctx)
             seen.append(ctx)
         }
@@ -79,5 +79,20 @@ struct ProgressTests {
         }
 
         #expect(seen.last?.curBytes == Int(totalSize))
+    }
+    
+    @Test("Progress 指定次数和总大小 抛错测试")
+    func testPiecesBytesThrowingProgress() throws {
+        #expect(throws: Error.self, performing: {
+            try Progress(pieces: 5, bytes: 5012)
+        })
+        
+        #expect(throws: Error.self, performing: {
+            try Progress(pieces: 0, bytes: 1000)
+        })
+        
+        #expect(throws: Error.self, performing: {
+            try Progress(pieces: 8, bytes: 700)
+        })
     }
 }

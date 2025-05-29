@@ -12,21 +12,16 @@ public protocol RequestCryptoIOHandler: Sendable {
     /// 发送一个 HTTP 请求的数据块。
     ///
     /// - Parameters:
-    ///   - request: 原始 HTTP 请求对象。
-    ///   - dataChunk: 要发送的当前数据块。
+    ///   - data: 原始 HTTP 请求数据。
     ///   - context: 当前 NIO 通道处理上下文。
-    ///   - allocator: 用于分配 ByteBuffer 的分配器。
-    ///   - streaming: 是否为流式发送；true 表示还有更多数据后续发送。
     /// - Returns: 返回包含最终发送 ByteBuffer 的异步结果。
     func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer>
 
     /// 解析接收到的响应数据。
     ///
     /// - Parameters:
-    ///   - response: 从通道中读取的原始响应字节数据。
-    ///   - bufferStrategy: 缓冲策略，指示是收集全部数据还是流式处理。
+    ///   - data: 从通道中读取的原始响应字节数据。
     ///   - context: 当前通道上下文。
-    ///   - streaming: 是否为流式接收。
     /// - Returns: 返回解析出的 HTTP 响应及正文 ByteBuffer 的异步结果。
     func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer>
 

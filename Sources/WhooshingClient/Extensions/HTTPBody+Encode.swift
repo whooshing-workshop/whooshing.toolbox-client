@@ -115,7 +115,7 @@ public extension HTTPBody {
     ///
     /// - Parameter:
     ///   - file: 要读取的本地文件路径。
-    ///   - progress: 文件发出的进度回调。
+    ///   - progress: 文件发出的进度回调，可从这里读出进度信息。
     ///
     /// - Returns: 分块读取的流式 HTTPBody，Content-Type 为 `application/octet-stream`，并附带文件名作为 `content-disposition`。
     static func file(from file: FilePath, progress: AsyncProgress? = nil) -> Self {

@@ -129,7 +129,7 @@ public extension HTTPBody {
     ///   - file: 要写入的目标文件路径。
     ///   - options: 写入选项。
     ///   - startAt: 起始偏移量，默认从 0 开始。
-    ///   - progress: 文件写入的进度回调。
+    ///   - progress: 文件写入的进度回调，可从这里读出进度信息。
     /// - Throws: 若类型不为 `.stream`，文件打开、写入或关闭失败则抛出错误。
     func file(to file: FilePath, options: OpenOptions.Write, startAt: Int64 = 0, progress: AsyncProgress?) async throws {
         guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150013) }

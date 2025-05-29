@@ -2,6 +2,7 @@ import NIOCore
 import NIOHTTP1
 import NIOConcurrencyHelpers
 
+/// 带有 Backpressure 机制的 Channel 处理器
 final class RequestBackPressureHandler: ChannelDuplexHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
     typealias OutboundIn = ByteBuffer

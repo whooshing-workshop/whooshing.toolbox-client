@@ -1,5 +1,6 @@
 import Foundation
 import NIOConcurrencyHelpers
+import ErrorHandle
 
 /// 一个支持顺序生成固定数量 `ProgressContext` 的序列，用于模拟或追踪迭代任务进度。
 ///
@@ -10,9 +11,10 @@ import NIOConcurrencyHelpers
 ///
 /// ```swift
 /// for ctx in Progress(chunk: 1024, bytes: 8192) {
-///     print(ctx)             // 打印出该 progress 的详细信息
-///     print(ctx.index)       // 从 0...7
-///     print(ctx.curBytes)    // 依次打印 1024, 2048, 3072 ... 8192
+///     print(ctx)              // 打印出该 progress 的详细信息
+///     print(ctx.index)        // 从 0...7
+///     print(ctx.curBytes)     // 依次打印 1024, 2048, 3072 ... 8192
+///     print(ctx.bytes)        // 每次打印 1024
 ///     print(...)
 ///     // 进行一些数据生成操作
 /// }
@@ -24,9 +26,10 @@ import NIOConcurrencyHelpers
 ///
 /// ```swift
 /// for ctx in Progress(pieces: 10, chunk: 512) {
-///     print(ctx)             // 打印出该 progress 的详细信息
-///     print(ctx.index)       // 从 0...9
-///     print(ctx.curBytes)    // 依次打印 512, 1024, 1536 ... 5120
+///     print(ctx)              // 打印出该 progress 的详细信息
+///     print(ctx.index)        // 从 0...9
+///     print(ctx.curBytes)     // 依次打印 512, 1024, 1536 ... 5120
+///     print(ctx.bytes)        // 每次打印 512
 ///     print(...)
 ///     // 进行一些数据生成操作
 /// }
@@ -37,9 +40,10 @@ import NIOConcurrencyHelpers
 ///
 /// ```swift
 /// for ctx in Progress(pieces: 4, bytes: 2048) {
-///     print(ctx)             // 打印出该 progress 的详细信息
-///     print(ctx.index)       // 从 0...3
-///     print(ctx.curBytes)    // 依次打印 512, 1024, 1536, 2048
+///     print(ctx)              // 打印出该 progress 的详细信息
+///     print(ctx.index)        // 从 0...3
+///     print(ctx.curBytes)     // 依次打印 512, 1024, 1536, 2048
+///     print(ctx.bytes)        // 每次打印 512
 ///     print(...)
 ///     // 进行一些数据生成操作
 /// }
@@ -49,15 +53,17 @@ import NIOConcurrencyHelpers
 /// 正确处理每次进度的大小，会将余数分配最后一个 progress 中
 ///
 /// ```swift
-/// for ctx in Progress(pieces: 5, bytes: 5512) {
-///     print(ctx)             // 打印出该 progress 的详细信息
-///     print(ctx.index)       // 从 0...4
-///     print(ctx.curBytes)    // 依次打印 1378, 2756, 4134,
+/// for ctx in try? Progress(pieces: 5, bytes: 5513) {
+///     print(ctx)              // 打印出该 progress 的详细信息
+///     print(ctx.index)        // 从 0...4
+///     print(ctx.curBytes)     // 依次打印 1378, 2756, 4134, 5512, 5513
+///     print(ctx.bytes)        // 依次打印 1378, 1378, 1378, 1378, 1
 ///     print(...)
 ///     // 进行一些数据生成操作
 /// }
 /// ```
 ///
+/// - Warning: 使用指定 总大小 和 块数 的初始方法被认为是不安全的，见函数 `init(pieces:, bytes:, allowLower:)`
 public struct Progress: Sequence {
     public typealias Element = ProgressContext
     
@@ -89,6 +95,10 @@ public struct Progress: Sequence {
     /// - Parameters:
     ///   - pieces: 数据块的个数
     ///   - bytes: 总数据的大小
+    ///   - allowLower: 是否允许分割数小于所指定的值
+    /// - Throws:
+    ///   - inputIllegal: 输入非法，当 pieces == 0 时触发
+    ///   - pieceFailed: 分片失败，当 allowLower = false，且无法保证按 pieces 数量分配时触发
     ///
     /// 自动切割数据块，若总大小非个数的倍数，会自动切分分配，例如：总大小 5013，
     /// 个数为 5，则每次的数据大小为 1253, 1253, 1253, 1253, 1
@@ -97,14 +107,23 @@ public struct Progress: Sequence {
     /// 实际进行的数据块的个数可能 = 所指定的个数 - 1。例如，总大小为 600，
     /// 数据块个数为 7，则数据块将会以每步 100 的大小进行，因此只会进行 6 步。另外，所
     /// 输入的数据块个数不可等于 0。因此使用该函数有一定的风险
-    public init(pieces: UInt, bytes: UInt) {
-        guard pieces != 0 else { fatalError("输入非法") }
+    public init(pieces: UInt, bytes: UInt, allowLower: Bool = false) throws {
+        guard pieces != 0 else { throw Err.inputIllegal.d("不接受 0 个数据块的分割方式") }
         if bytes % pieces == 0 {
             self.chunk = bytes / pieces
         } else {
+            if allowLower == false, bytes % (pieces - 1) == 0{
+                throw Err.pieceFailed.d("预计分片为 \(bytes) 块，但只能分为 \(bytes - 1) 块")
+            }
             self.chunk = bytes / (pieces - 1)
         }
         self.total = bytes
+    }
+    
+    public enum Err: String, ErrList {
+        public var domain: String { "woo.sys.server.progress.err" }
+        case inputIllegal = "输入非法"
+        case pieceFailed = "进度分片失败"
     }
 
     public struct Iterator: IteratorProtocol {
