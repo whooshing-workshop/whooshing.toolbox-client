@@ -54,7 +54,7 @@ import WhooshingClient
 
 ##### 创建 Client
 
-对于 **ApiClient**，需要提供用户认证信息，包括用户凭据和用户密钥。关于认证机制，见 [whooshing.toolbox-authentication](https://github.com/SJJC-Team/whooshing.module-authentication)
+对于 **ApiClient**，需要提供用户认证信息，包括用户凭据和用户密钥。关于认证机制，见 [whooshing.system-authentication](https://github.com/SJJC-Team/whooshing.system-authentication)
 
 ```swift
 let client = ApiClient(credential: "bRRPIiYbt0t4RzfqeeHSkg==", token: "jXTz4vTQk0O/XFIjWQIHLC7z9/E0/4VtEb+LkF8IcA4=", eventLoop: eventLoop, logger: logger)
