@@ -73,10 +73,11 @@ public extension HTTPBody {
     
     /// 将请求体作为异步流解析为指定类型元素的通道。
     ///
-    /// - Parameter as: 要转换的元素类型，需符合 `ThrowableDataConvertable`。
+    /// - Parameter
+    ///   - as: 要转换的元素类型，需符合 `ThrowableDataConvertable`。
     /// - Returns: 异步数据通道。
     /// - Throws: 若类型不为 `.stream` 或转换失败。
-    func stream<T: ThrowableDataConvertable & Sendable>(as: T.Type = T.self) throws -> AsyncThrowingChannel<T, Error> {
+    func stream<T: ThrowableDataConvertable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) throws -> AsyncThrowingChannel<T, Error> {
         guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150012) }
         if T.self == ByteBuffer.self {
             return stream as! AsyncThrowingChannel<T, Error>
@@ -86,10 +87,13 @@ public extension HTTPBody {
                 do {
                     for try await chunk in stream {
                         await res.send(try .init(data: .init(buffer: chunk)))
+                        progress?.sendProgress(chunk.readableBytes)
                     }
                     res.finish()
+                    progress?.finish()
                 } catch {
                     res.fail(error)
+                    progress?.finish(throwing: error)
                 }
             }
             return res
@@ -98,10 +102,12 @@ public extension HTTPBody {
     
     /// 将请求体中的流式 JSON 解码为异步通道。
     ///
-    /// - Parameter as: 要解码的目标类型。
+    /// - Parameter
+    ///   - as: 要解码的目标类型。
+    ///   - progress: 文件写入的进度回调，可从这里读出进度信息。
     /// - Returns: 解码后的异步通道。
     /// - Throws: 若类型不为 `.stream` 或 JSON 解码失败。
-    func jsonStream<T: Decodable & Sendable>(as: T.Type = T.self) throws -> AsyncThrowingChannel<T, Error> {
+    func jsonStream<T: Decodable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) throws -> AsyncThrowingChannel<T, Error> {
         guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150012) }
         if T.self == ByteBuffer.self {
             return stream as! AsyncThrowingChannel<T, Error>
@@ -113,10 +119,13 @@ public extension HTTPBody {
                     for try await chunk in stream {
                         let data = try decoder.decode(T.self, from: chunk)
                         await res.send(data)
+                        progress?.sendProgress(chunk.readableBytes)
                     }
                     res.finish()
+                    progress?.finish()
                 } catch {
                     res.fail(error)
+                    progress?.finish(throwing: error)
                 }
             }
             return res
@@ -131,7 +140,7 @@ public extension HTTPBody {
     ///   - startAt: 起始偏移量，默认从 0 开始。
     ///   - progress: 文件写入的进度回调，可从这里读出进度信息。
     /// - Throws: 若类型不为 `.stream`，文件打开、写入或关闭失败则抛出错误。
-    func file(to file: FilePath, options: OpenOptions.Write, startAt: Int64 = 0, progress: AsyncProgress?) async throws {
+    func file(to file: FilePath, options: OpenOptions.Write, startAt: Int64 = 0, progress: AsyncProgress? = nil) async throws {
         guard case let .stream(stream) = self.type else { throw ReqClient.DecodeErr.bodyTypeNotMatch.d(150013) }
         var fileHandler: WriteFileHandle? = nil
         do {
