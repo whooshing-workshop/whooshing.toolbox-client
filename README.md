@@ -1,6 +1,6 @@
 # Whooshing 客户端请求库
 
-WhooshingClient 是 Whooshing 系统中为服务模块提供的通用网络请求库，支持基于 Vapor 和 SwiftNIO 的异步通信，具备同步封装、加密能力、Backpressure 机制、模块化设计等特性。
+WhooshingClient 是 Whooshing 系统中的通用网络请求库，具备同步封装、加密能力、Backpressure 机制、模块化设计等特性。可用于加密访问 Whooshing 系统的服务模块
 
 该库已集成于 API、INLINE、HTTPS 三大子模块，并可作为服务内部通信、远程调用、数据传输的统一方案。
 
