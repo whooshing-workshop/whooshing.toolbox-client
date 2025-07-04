@@ -6,6 +6,7 @@ import ErrorHandle
 import FoundationNetworking
 #endif
 
+@frozen
 public struct Curl {
     
     #if !canImport(Darwin) || os(macOS)
@@ -16,6 +17,7 @@ public struct Curl {
     /// 若无法连接，则返回 curl 错误，见 ``Curl.Err``
     ///
     /// Unix 命令行仅在 linux 或 macOS 受支持
+    @inlinable
     @discardableResult
     static func isUriConnectable(_ uri: String) async -> Res<HTTPResponseStatus, Curl.Err> {
         let task = Process()
@@ -52,6 +54,7 @@ public struct Curl {
     /// 若无法连接，则返回 URLError 错误，见 ``URLError``
     ///
     /// IOS 支持
+    @inlinable
     @discardableResult
     static func isUriConnectable(_ uri: String) async -> Res<HTTPResponseStatus, Curl.Err> {
         guard let url = URL(string: uri) else {
@@ -75,6 +78,7 @@ public struct Curl {
 }
 
 public extension Curl {
+    @frozen
     enum Err: Int, ErrList {
         case ok = 0
         case unsupportedProtocol = 1
@@ -167,8 +171,10 @@ public extension Curl {
 
 extension Curl.Err: LocalizedError, CustomStringConvertible {
     
+    @inlinable
     public var description: String { "curl Error \(rawValue): \(errorDescription!)" }
     
+    @inlinable
     public var errorDescription: String? {
         switch self {
         case .ok: return "成功，无错误"

@@ -6,17 +6,21 @@ import NIOConcurrencyHelpers
 public final class Weak<Value>: @unchecked Sendable where Value: AnyObject {
     /// 当前弱引用对象，若对象已释放则为 nil。
     /// 该属性通过锁机制进行同步，确保线程安全访问。
+    @inlinable
     public weak var value: Value? {
         get { lock.withLock { __value } }
         set { lock.withLock { __value = newValue } }
     }
     
     /// 实际存储弱引用的私有属性。
-    private weak var __value: Value?
-    private let lock = NIOLock()
+    @usableFromInline
+    private(set) weak var __value: Value?
+    @usableFromInline
+    let lock = NIOLock()
     
     /// 使用一个引用类型对象初始化包装器。
     /// - Parameter wrapped: 要包装的对象。
+    @inlinable
     public init(_ wrapped: Value) {
         self.__value = wrapped
     }
@@ -29,16 +33,20 @@ public final class Weak<Value>: @unchecked Sendable where Value: AnyObject {
 public final class Unowned<Value>: @unchecked Sendable where Value: AnyObject {
     /// 当前无主引用的对象。
     /// 该属性通过锁机制进行同步，确保线程安全访问。
+    @inlinable
     public unowned var value: Value {
         get { lock.withLock { __value } }
         set { lock.withLock { __value = newValue } }
     }
     
-    private unowned var __value: Value
-    private let lock = NIOLock()
+    @usableFromInline
+    private(set) unowned var __value: Value
+    @usableFromInline
+    let lock = NIOLock()
     
     /// 使用一个引用类型对象初始化包装器。
     /// - Parameter wrapped: 要包装的对象。
+    @inlinable
     public init(_ wrapped: Value) {
         self.__value = wrapped
     }

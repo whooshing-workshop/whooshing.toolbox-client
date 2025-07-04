@@ -13,6 +13,7 @@ extension APIReqClient {
 }
 
 enum API {
+    @frozen
     public enum Errcase: String, ErrList {
         case requestEncryptFailed = "请求数据加密时失败"
         case responseDecryptFailed = "响应数据解密时失败"

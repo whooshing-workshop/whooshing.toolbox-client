@@ -10,5 +10,6 @@ extension HTTPRequestEncoder: @retroactive @unchecked Sendable {}
 extension NIOHTTPRequestHeadersValidator: @retroactive @unchecked Sendable {}
 
 public extension URL {
+    @inlinable
     func toUri(with path: String) -> WebURI { .init(stringLiteral: self.absoluteString + path) }
 }

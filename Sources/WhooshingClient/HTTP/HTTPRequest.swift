@@ -6,6 +6,7 @@ import AsyncHTTPClient
 
 /// 表示一个 HTTP 请求，封装了请求方法、URL、版本、头部和请求体，
 /// 提供便于在客户端或服务器中构建、序列化、调试 HTTP 请求的接口。
+@frozen
 public struct HTTPRequest: Sendable, CustomStringConvertible {
     
     /// HTTP 请求方法，例如 GET、POST、PUT 等。
@@ -21,6 +22,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     /// - 若为 `.bytes` 类型，则写入 `content-length` 并移除 `transfer-encoding`；
     /// - 若为 `.stream` 类型，则写入 `transfer-encoding: chunked` 并移除 `content-length`；
     /// - 若设置为 `nil`，则默认写入 `content-length: 0`，并移除已有的 `content` 相关头字段。
+    @inlinable
     public var body: HTTPBody? {
         get { __body }
         set {
@@ -50,9 +52,11 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     }
     
     /// 内部存储的请求体，供外部 `body` 属性代理访问。
-    private var __body: HTTPBody?
+    @usableFromInline
+    private(set) var __body: HTTPBody?
     
     /// 返回请求的完整字符串表示，包含请求行、头部和正文内容（如为流则显示占位信息）。
+    @inlinable
     public var description: String {
         let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
         
@@ -75,6 +79,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     /// - Parameter bufferAllocator: ByteBuffer 分配器，默认新建一个。
     /// - Returns: 一个元组，第一个元素是包含请求行和头部的 ByteBuffer，第二个是可选的正文 ByteBuffer。
     /// - Throws: 若转换过程中出现错误，可能抛出异常。
+    @inlinable
     public func headData(allocator: ByteBufferAllocator = .init()) -> ByteBuffer {
         var requestStr = "\(method.rawValue) \(url.queryPath) HTTP/1.1\r\n"
         headers.forEach { (name, value) in requestStr += "\(name): \(value)\r\n" }
@@ -91,6 +96,7 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     ///   - version: HTTP 协议版本，默认为 HTTP/1.1。
     ///   - headers: 请求头，默认为空。
     ///   - body: 请求体，默认为 nil。
+    @inlinable
     public init(
         method: HTTPMethod,
         url: WebURI,
@@ -103,11 +109,5 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
         self.version = version
         self.headers = headers
         self.body = body
-    }
-    
-    /// 定义了 HTTPRequest 中可能抛出的错误，用于统一错误处理。
-    public enum Err: String, ErrList {
-        public var domain: String { "woo.sys.client.request.err" }
-        case requestToDataFailed = "将请求转为 Data 失败"
     }
 }

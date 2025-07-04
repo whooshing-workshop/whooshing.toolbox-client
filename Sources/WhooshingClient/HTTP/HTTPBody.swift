@@ -50,7 +50,7 @@ import NIOHTTP1
 /// ```swift
 /// try await body.file(to: "output.dat")
 /// ```
-///
+@frozen
 public struct HTTPBody: Sendable {
     /// HTTP 内容的类型，支持静态字节或异步流。
     public enum `Type`: Sendable {
@@ -70,6 +70,7 @@ public struct HTTPBody: Sendable {
     /// - Parameters:
     ///   - type: 主体类型，可以是静态数据或异步流。
     ///   - headers: 与主体关联的 HTTP 头部，默认 Content-Type 为 `application/octet-stream`。
+    @inlinable
     init(type: `Type`, headers: HTTPHeaders = ["content-type": "application/octet-stream"]) {
         self.type = type
         self.headers = headers

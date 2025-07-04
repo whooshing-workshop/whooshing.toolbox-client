@@ -5,6 +5,8 @@ import DataConvertable
 import Foundation
 import NIOFileSystem
 import ErrorHandle
+import NIOFoundationCompat
+import NIOAdvanced
 
 /// 表示 HTTP 请求体解码失败的错误类型。
 /// 包含类型不匹配等常见错误码。
@@ -13,7 +15,6 @@ public extension HTTPBody {
         case dataDecodeFailed = "数据解码失败"
         case bodyTypeNotMatch = "数据解码失败，类型不符合"
         case streamDecodeFailed = "流数据解码失败"
-        
         case fileWriteUnknowErr = "文件写入时遇到未知错误"
     }
 }
@@ -23,6 +24,7 @@ public extension HTTPBody {
     ///
     /// - Returns: 请求体中的 ByteBuffer。
     /// - Throws: 若类型不为 `.bytes`，抛出 `DecodeErr.bodyTypeNotMatch`。
+    @inlinable
     func bytes() -> Res<ByteBuffer, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -34,6 +36,7 @@ public extension HTTPBody {
     ///
     /// - Returns: 解码后的字符串内容。
     /// - Throws: 若类型不为 `.bytes`，或字符串解码失败，抛出错误。
+    @inlinable
     func text() -> Res<String, DecodeErrcase> { self.data() }
     
     /// 将请求体内容解码为任意符合 `ThrowableDataConvertable` 的类型。
@@ -41,6 +44,7 @@ public extension HTTPBody {
     /// - Parameter as: 要解码的目标类型。
     /// - Returns: 解码后的对象。
     /// - Throws: 若类型不匹配或转换失败。
+    @inlinable
     func data<T: ThrowableDataConvertable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -53,6 +57,7 @@ public extension HTTPBody {
     /// - Parameter as: 要转换的目标类型。
     /// - Returns: 转换后的对象。
     /// - Throws: 若类型不匹配或转换失败。
+    @inlinable
     func data<T: SafeDataConvertable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -66,6 +71,7 @@ public extension HTTPBody {
     /// - Parameter as: 要解码的 `Decodable` 类型。
     /// - Returns: 解码后的对象。
     /// - Throws: 若类型不为 `.bytes` 或 JSON 解码失败。
+    @inlinable
     func json<T: Decodable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -82,6 +88,7 @@ public extension HTTPBody {
     ///
     /// - Returns: ByteBuffer 异步通道。
     /// - Throws: 若类型不为 `.stream`，抛出错误。
+    @inlinable
     func stream() -> Res<AsyncThrowingChannel<ByteBuffer, Error>, DecodeErrcase> {
         self.stream(as: ByteBuffer.self)
     }
@@ -92,6 +99,7 @@ public extension HTTPBody {
     ///   - as: 要转换的元素类型，需符合 `ThrowableDataConvertable`。
     /// - Returns: 异步数据通道。
     /// - Throws: 若类型不为 `.stream` 或转换失败。
+    @inlinable
     func stream<T: ThrowableDataConvertable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) -> Res<AsyncThrowingChannel<T, Error>, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -126,6 +134,7 @@ public extension HTTPBody {
     ///   - progress: 文件写入的进度回调，可从这里读出进度信息。
     /// - Returns: 解码后的异步通道。
     /// - Throws: 若类型不为 `.stream` 或 JSON 解码失败。
+    @inlinable
     func jsonStream<T: Decodable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) -> Res<AsyncThrowingChannel<T, Error>, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
             return .failure(.bodyTypeNotMatch)
@@ -163,6 +172,7 @@ public extension HTTPBody {
     ///   - startAt: 起始偏移量，默认从 0 开始。
     ///   - progress: 文件写入的进度回调，可从这里读出进度信息。
     /// - Throws: 若类型不为 `.stream`，文件打开、写入或关闭失败则抛出错误。
+    @inlinable
     func file(to file: FilePath, options: OpenOptions.Write, startAt: Int64 = 0, progress: AsyncProgress? = nil) async -> Res<Void, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
             return .failure(.bodyTypeNotMatch)

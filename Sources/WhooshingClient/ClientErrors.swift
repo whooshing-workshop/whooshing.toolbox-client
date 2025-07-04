@@ -1,6 +1,7 @@
 import ErrorHandle
 
 public extension HttpsClient {
+    @frozen
     enum Errcase: String, ErrList, Sendable {
         public typealias ErrType = WhooshingClientError<HttpsClient>
         
@@ -13,6 +14,7 @@ public extension HttpsClient {
 }
 
 public extension ApiClient {
+    @frozen
     enum Errcase: String, ErrList, Sendable {
         public typealias ErrType = WhooshingClientError<ApiClient>
         
@@ -29,6 +31,7 @@ public extension ApiClient {
     }
 }
 
+@frozen
 public struct WhooshingClientError<Client>: Err, Sendable where Client: WhooshingClient {
     /// 该错误的错误枚举值。
     public var error: Client.Errcase!
