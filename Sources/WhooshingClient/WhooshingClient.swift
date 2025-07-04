@@ -64,7 +64,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     var fileEventLoop: EventLoop { get }
     var key: Crypto.Symm.Key? { get }
     var channel: (any Channel)? { get }
-    func removeHTTPHandlers() async -> Res<Void, Errcase>
+    func removeHTTPHandlers() async -> Result<Void, Failure>
     func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure>
     
     // MARK: - 核心实现

@@ -27,7 +27,7 @@ public extension ApiClient {
         case channelAssignFailed = "通道分配失败"
         case tcpSendFailed = "TCP 通道数据发送失败"
         case tcpHandlerRemoveFailed = "TCP 处理器移除失败"
-        case internalFailure = "内部未知错误"
+        case internalFailure = "内部错误"
     }
 }
 

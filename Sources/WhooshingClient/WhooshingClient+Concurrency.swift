@@ -17,8 +17,8 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
-        await send(.GET, to: url, body: body, headers: headers)
+    ) async throws(Failure) -> HTTPResponse {
+        try await send(.GET, to: url, body: body, headers: headers)
     }
     
     /// 发送一个异步阻塞 POST 请求。
@@ -34,8 +34,8 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
-        await send(.POST, to: url, body: body, headers: headers)
+    ) async throws(Failure) -> HTTPResponse {
+        try await send(.POST, to: url, body: body, headers: headers)
     }
     
     /// 发送一个异步阻塞 PATCH 请求。
@@ -51,8 +51,8 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
-        await send(.PATCH, to: url, body: body, headers: headers)
+    ) async throws(Failure) -> HTTPResponse {
+        try await send(.PATCH, to: url, body: body, headers: headers)
     }
     
     /// 发送一个异步阻塞 PUT 请求。
@@ -68,8 +68,8 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
-        await send(.PUT, to: url, body: body, headers: headers)
+    ) async throws(Failure) -> HTTPResponse {
+        try await send(.PUT, to: url, body: body, headers: headers)
     }
     
     /// 发送一个异步阻塞 DELETE 请求。
@@ -85,8 +85,8 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
-        await send(.DELETE, to: url, body: body, headers: headers)
+    ) async throws(Failure) -> HTTPResponse {
+        try await send(.DELETE, to: url, body: body, headers: headers)
     }
     
     /// 发送一个带指定 HTTP 方法的异步阻塞请求。
@@ -104,10 +104,8 @@ public extension WhooshingClient {
         to url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async -> Res<HTTPResponse, Errcase> {
+    ) async throws(Failure) -> HTTPResponse {
         let request = HTTPRequest(method: method, url: url, headers: headers, body: body)
-        return await .async {
-            try await send(request).get()
-        }
+        return try await send(request).get()
     }
 }
