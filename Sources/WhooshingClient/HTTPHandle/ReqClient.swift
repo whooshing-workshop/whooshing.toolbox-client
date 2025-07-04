@@ -18,7 +18,6 @@ open class ReqClient<IOHandler>: @unchecked Sendable where IOHandler: RequestCry
     public var ioHandler: IOHandler!
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
-    @inlinable
     public weak var channel: Channel? {
         if let channel = __channel, channel.isActive { return channel }
         return nil
@@ -62,7 +61,6 @@ extension ReqClient {
         case tcpHandlerFailed = "TCP 中间流处理器处理失败"
     }
 
-    @inlinable
     public func makeChannel(url: WebURI) -> EventLoopRes<(Channel, RequestWrapperHandler, domain: String?), Errcase> {
         
         guard [.http, .https].contains(url.scheme) else {
@@ -126,7 +124,6 @@ extension ReqClient {
         }.withError(Errcase.tcpHandlerInitialFailed)
     }
 
-    @inlinable
     public func send(
         _ client: HTTPRequest,
         channel: Channel,
@@ -146,7 +143,6 @@ extension ReqClient {
         }
     }
 
-    @inlinable
     public func closeAll() async {
         for (_, channel) in channelPool {
             try? await channel.close(mode: .all)
@@ -154,14 +150,12 @@ extension ReqClient {
         channelPool.removeAll()
     }
     
-    @inlinable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
         eventLoop.makeResultWithTask {  () throws(BscError<Errcase>) in
             try await self.removeHTTPHandlers().get()
         }
     }
     
-    @inlinable
     public func removeHTTPHandlers() async -> Res<Void, Errcase> {
         await .async {
             guard let channel = self.channel else { return }

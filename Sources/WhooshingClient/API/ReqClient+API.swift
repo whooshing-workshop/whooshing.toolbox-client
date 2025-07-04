@@ -37,12 +37,11 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         }
     }
 
-    @usableFromInline
     struct JSONData: Codable {
         let data: Data
     }
     
-    @inlinable
+    @usableFromInline
     func _send(
         request: HTTPRequest,
         channel: Channel,
@@ -66,14 +65,12 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         }
     }
 
-    @usableFromInline
     struct AuthExchangeJSON: Encodable {
         let credential: Data
         let tokenEncrypted: Data
     }
 
     /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行加密并哈希
-    @usableFromInline
     func authExchange(
         request: HTTPRequest,
         handler: RequestWrapperHandler,

@@ -43,28 +43,18 @@ public protocol RequestCryptoIOHandler: Sendable {
 }
 
 public extension RequestCryptoIOHandler {
-    @inlinable
     var isAvaliable: Bool { true }
-    @inlinable
     func connectionStart(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
-    @inlinable
     func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
 }
 
-@usableFromInline
 final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChannelHandler, @unchecked Sendable where IOHandler: RequestCryptoIOHandler{
-    @usableFromInline
     typealias InboundIn = ByteBuffer
-    @usableFromInline
     typealias InboundOut = ByteBuffer
-    @usableFromInline
     typealias OutboundIn = ByteBuffer
-    @usableFromInline
     typealias OutboundOut = ByteBuffer
     
-    @usableFromInline
     let logger: Logger?
-    @usableFromInline
     let ioHandler: IOHandler
     
     @frozen
@@ -72,13 +62,11 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         case internalFailure = "内部错误"
     }
 
-    @inlinable
     init(logger: Logger?, ioHandler: IOHandler) {
         self.ioHandler = ioHandler
         self.logger = logger
     }
     
-    @inlinable
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         guard ioHandler.isAvaliable else { return }
         let buffer = unwrapOutboundIn(data)
@@ -90,7 +78,6 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         }
     }
     
-    @inlinable
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         guard ioHandler.isAvaliable else { return }
         let buffer = unwrapInboundIn(data)
@@ -103,14 +90,12 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         }
     }
     
-    @inlinable
     func logIfTracing(prefix: String, context: ChannelHandlerContext, size: Int) {
         if let logger = self.logger, logger.logLevel == .trace {
             self.logger?.trace("\(prefix): \(context.channel.clientAddrInfo), 大小: \(ChunkTool.formatByteSize(size))")
         }
     }
     
-    @inlinable
     func channelRegistered(context: ChannelHandlerContext) {
         context.fireChannelRegistered()
         ioHandler.connectionStart(context: context).whenFailure { err in
@@ -118,7 +103,6 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         }
     }
     
-    @inlinable
     func channelUnregistered(context: ChannelHandlerContext) {
         context.fireChannelUnregistered()
         ioHandler.connectionEnd(context: context).whenFailure { err in
@@ -126,7 +110,6 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         }
     }
     
-    @inlinable
     func errorHappend(context: ChannelHandlerContext, error: Errcase.ErrType) {
         logger?.warning("\(error)")
         context.fireErrorCaught(error)

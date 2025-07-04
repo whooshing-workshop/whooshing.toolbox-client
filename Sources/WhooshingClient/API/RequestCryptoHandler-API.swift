@@ -69,7 +69,7 @@ enum API {
         }
         
         /// 发送请求时，进行编码并加密
-        @inlinable
+        @usableFromInline
         func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
             guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
@@ -134,9 +134,25 @@ enum API {
                 return plain
             }
         }
+        
+        // 连线建立
+        @usableFromInline
+        func connectionStart(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
+            logger?.debug("API.Client-连线建立: \(context.channel.clientAddrInfo)")
+            return context.eventLoop.makeSucceededVoidResult()
+        }
+
+        // 连线结束，进行清理
+        @usableFromInline
+        func connectionEnd(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
+            logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
+            let id = ObjectIdentifier(context.channel)
+            client?.apiRequestIoData?.connectionKeys[id] = nil
+            client?.apiRequestIoData?.readingBufferDatas[id] = nil
+            return context.eventLoop.makeSucceededVoidResult()
+        }
 
         // 检查 response 是否为 HTTP 格式的头，如果是，则返回其状态码
-        @inlinable
         func checkHeader(res: ByteBuffer) -> HTTPResponseStatus? {
             guard let res = try? String.make(data: res.data).get() else {
                 return nil
@@ -150,7 +166,6 @@ enum API {
             return nil
         }
 
-        @usableFromInline
         struct BodyReply: Codable {
             @usableFromInline
             let error: Bool
@@ -159,7 +174,6 @@ enum API {
         }
         
         // 检查 response 是否为 HTTP 格式且包括错误状态码
-        @inlinable
         func parseError(body: ByteBuffer) -> Errcase.ErrType {
             let reply: BodyReply
             do {
@@ -176,25 +190,7 @@ enum API {
                 return Errcase.responseParseErrorFailed.d("应当解析出 Error 信息，但失败")
             }
         }
-
-        // 连线建立
-        @inlinable
-        func connectionStart(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
-            logger?.debug("API.Client-连线建立: \(context.channel.clientAddrInfo)")
-            return context.eventLoop.makeSucceededVoidResult()
-        }
-
-        // 连线结束，进行清理
-        @inlinable
-        func connectionEnd(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
-            logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
-            let id = ObjectIdentifier(context.channel)
-            client?.apiRequestIoData?.connectionKeys[id] = nil
-            client?.apiRequestIoData?.readingBufferDatas[id] = nil
-            return context.eventLoop.makeSucceededVoidResult()
-        }
         
-        @inlinable
         func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> HTTPResponseStatus? {
             // 确保至少有 "HTTP/1.1 200" 这段内容（12 字节）
             guard buffer.readableBytes >= 12 else {
