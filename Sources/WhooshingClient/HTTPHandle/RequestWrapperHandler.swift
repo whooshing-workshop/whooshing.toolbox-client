@@ -16,6 +16,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
     public typealias InboundIn = HTTPClientResponsePart
     public typealias InboundOut = HTTPResponse
     
+    @frozen
     public enum Errcase: String, ErrList {
         case responseNotValid = "对方的响应不合法"
         case cancelled = "外部错误，被取消"
@@ -26,15 +27,19 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
     
     public var promise: EventLoopTarget<InboundOut, Errcase.ErrType>? = nil
     
-    private var currentStrategy: ResponseBufferStrategy? = nil
-    private var currentResponse: HTTPResponse? = nil
+    @usableFromInline
+    private(set) var currentStrategy: ResponseBufferStrategy? = nil
+    @usableFromInline
+    private(set) var currentResponse: HTTPResponse? = nil
     
+    @usableFromInline
     enum ReadingStatus: Sendable {
         case pause
         case resume
     }
     
-    private enum ResponseBufferStrategy {
+    @usableFromInline
+    enum ResponseBufferStrategy {
         case bytes(Int)
         case stream(
             SendTaskGroup,
@@ -42,10 +47,12 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
         )
     }
     
+    @inlinable
     init(logger: Logger?) {
         self.logger = logger
     }
     
+    @inlinable
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         guard let promise = promise else { fatalError("未指定 promise") }
         
@@ -66,6 +73,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
         }
     }
     
+    @inlinable
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let request = unwrapOutboundIn(data)
         let head = HTTPRequestHead(version: request.version, method: request.method, uri: request.url.queryPath, headers: request.headers)
@@ -103,6 +111,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
 }
 
 extension RequestWrapperHandler {
+    @inlinable
     func readHead(context: ChannelHandlerContext, head: HTTPResponseHead) throws(BscError<Errcase>) -> InboundOut? {
         var res = HTTPResponse(status: head.status, version: head.version, headers: head.headers)
         res.channel = context.channel
@@ -129,6 +138,7 @@ extension RequestWrapperHandler {
         throw Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头")
     }
     
+    @inlinable
     func readBody(context: ChannelHandlerContext, body: ByteBuffer) throws(BscError<Errcase>) {
         guard let strategy = self.currentStrategy else {
             throw Errcase.internalFailure.d("机制错误，strategy 未指定")
@@ -177,6 +187,7 @@ extension RequestWrapperHandler {
         }
     }
     
+    @inlinable
     func readEnd(context: ChannelHandlerContext) throws(BscError<Errcase>) -> InboundOut? {
         guard let strategy = self.currentStrategy else {
             throw Errcase.internalFailure.d("机制错误，strategy 未指定")
@@ -200,9 +211,12 @@ extension RequestWrapperHandler {
     }
 }
 
+@usableFromInline
 actor SendTaskGroup {
-    private var tasks: [Task<Void, Never>] = []
+    @usableFromInline
+    private(set) var tasks: [Task<Void, Never>] = []
 
+    @inlinable
     func add(_ operation: @escaping @Sendable () async -> Void) {
         tasks.append(Task {
             await operation()
@@ -210,10 +224,14 @@ actor SendTaskGroup {
         })
     }
 
+    @inlinable
     func waitAll() async {
         for t in tasks {
             await t.value
         }
         tasks.removeAll()
     }
+    
+    @inlinable
+    init() {}
 }

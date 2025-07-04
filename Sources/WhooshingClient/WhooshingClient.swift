@@ -132,6 +132,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
 }
 
 public extension WhooshingClient {
+    @inlinable
     func get(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -140,6 +141,7 @@ public extension WhooshingClient {
         send(.GET, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func post(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -148,6 +150,7 @@ public extension WhooshingClient {
         send(.POST, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func patch(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -156,6 +159,7 @@ public extension WhooshingClient {
         send(.PATCH, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func put(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -164,6 +168,7 @@ public extension WhooshingClient {
         send(.PUT, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func delete(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -172,6 +177,7 @@ public extension WhooshingClient {
         send(.DELETE, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func send(
         _ method: HTTPMethod,
         to url: WebURI,

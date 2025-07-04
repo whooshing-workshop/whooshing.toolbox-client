@@ -24,7 +24,8 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     public var channel: (any NIOCore.Channel)? { fatalError("永远不应调用此属性") }
     public var fileEventLoop: any NIOCore.EventLoop
     public let logger: Logger?
-    private let client: HTTPClient
+    @usableFromInline
+    let client: HTTPClient
 
     /// 初始化一个 `HttpsClient` 实例。
     ///
@@ -32,6 +33,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     ///   - eventLoop: 用于驱动请求执行的 `EventLoop`。
     ///   - configuration: HTTPClient 的配置，默认为单例配置。
     ///   - logger: 可选的日志记录器，用于记录请求信息。
+    @inlinable
     public init(in eventLoop: EventLoop, configuration: HTTPClient.Configuration = .singletonConfiguration, logger: Logger? = nil) {
         self.fileEventLoop = eventLoop
         self.logger = logger
@@ -43,6 +45,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// - Parameter request: 要发送的请求对象。
     /// - Returns: 一个 `EventLoopResult`，其结果为 `HTTPResponse`。
     /// - Throws: 若响应不合法或连接失败，抛出 `HttpsClient.Errcase` 中定义的错误。
+    @inlinable
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {
@@ -52,6 +55,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     }
 
     /// 析构函数，在实例释放时关闭内部 HTTPClient。
+    @inlinable
     deinit {
         try? self.client.syncShutdown()
     }
@@ -62,6 +66,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// - Returns: 一个立即完成的 `EventLoopResult<Void>`。
     ///
     /// - Warning: 你永远不应当调用该方法
+    @inlinable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
         eventLoop.makeSucceededVoidResult()
     }
@@ -69,10 +74,12 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// 清除当前上下文中的 HTTP handler（异步接口，实际为空实现）。
     ///
     /// - Warning: 你永远不应当调用该方法
+    @inlinable
     public func removeHTTPHandlers() async -> Res<Void, Errcase> { return .success(()) }
 }
 
 extension HttpsClient {
+    @usableFromInline
     func streamingSend(
         _ request: HTTPRequest
     ) async throws(Failure) -> HTTPResponse {

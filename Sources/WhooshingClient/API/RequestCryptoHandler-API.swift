@@ -7,11 +7,14 @@ import NIOAdvanced
 import Logging
 import Foundation
 import AsyncHTTPClient
+import NIOFoundationCompat
 
 extension APIReqClient {
+    @inlinable
     var apiRequestIoData: API.RequestIOData? { self.storage[API.RequestIOData.self] }
 }
 
+@usableFromInline
 enum API {
     @frozen
     public enum Errcase: String, ErrList {
@@ -23,30 +26,50 @@ enum API {
         case internalFailure = "内部错误"
     }
     
+    @usableFromInline
     final class RequestIOData: SendableStorage.Key, Sendable {
+        @usableFromInline
         typealias Value = RequestIOData
+        @usableFromInline
         let credential: String
+        @usableFromInline
         let token: String
+        @usableFromInline
         let connectionKeys: SendableDictionary<ObjectIdentifier, Crypto.Symm.Key> = .init()
+        @usableFromInline
         let readingBufferDatas: SendableDictionary<ObjectIdentifier, ByteBuffer> = .init()
+        @usableFromInline
         let errorTemps: SendableDictionary<ObjectIdentifier, HTTPResponseStatus> = .init()
         
+        @usableFromInline
         init(credential: String, token: String) {
             self.credential = credential
             self.token = token
         }
     }
     
+    @usableFromInline
     struct RequestIOCrypto: RequestCryptoIOHandler, Sendable {
         
+        @usableFromInline
         typealias Failure = Errcase.ErrType
         
+        @usableFromInline
         weak private(set) var client: APIReqClient?
+        @usableFromInline
         let logger: Logger?
         
+        @inlinable
         var isAvaliable: Bool { client?.apiRequestIoData != nil }
         
+        @inlinable
+        init(client: APIReqClient? = nil, logger: Logger?) {
+            self.client = client
+            self.logger = logger
+        }
+        
         /// 发送请求时，进行编码并加密
+        @inlinable
         func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
             guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
@@ -71,6 +94,7 @@ enum API {
         }
 
         /// 收到响应时，进行解密并解码
+        @usableFromInline
         func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
             guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
@@ -112,6 +136,7 @@ enum API {
         }
 
         // 检查 response 是否为 HTTP 格式的头，如果是，则返回其状态码
+        @inlinable
         func checkHeader(res: ByteBuffer) -> HTTPResponseStatus? {
             guard let res = try? String.make(data: res.data).get() else {
                 return nil
@@ -125,13 +150,17 @@ enum API {
             return nil
         }
 
+        @usableFromInline
+        struct BodyReply: Codable {
+            @usableFromInline
+            let error: Bool
+            @usableFromInline
+            let reason: String
+        }
+        
         // 检查 response 是否为 HTTP 格式且包括错误状态码
+        @inlinable
         func parseError(body: ByteBuffer) -> Errcase.ErrType {
-            struct BodyReply: Codable {
-                let error: Bool
-                let reason: String
-            }
-            
             let reply: BodyReply
             do {
                 reply = try required(throws: Errcase.responseParseErrorFailed, "应当解析出 Error 信息") {
@@ -149,12 +178,14 @@ enum API {
         }
 
         // 连线建立
+        @inlinable
         func connectionStart(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
             logger?.debug("API.Client-连线建立: \(context.channel.clientAddrInfo)")
             return context.eventLoop.makeSucceededVoidResult()
         }
 
         // 连线结束，进行清理
+        @inlinable
         func connectionEnd(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
             logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
             let id = ObjectIdentifier(context.channel)
@@ -163,6 +194,7 @@ enum API {
             return context.eventLoop.makeSucceededVoidResult()
         }
         
+        @inlinable
         func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> HTTPResponseStatus? {
             // 确保至少有 "HTTP/1.1 200" 这段内容（12 字节）
             guard buffer.readableBytes >= 12 else {

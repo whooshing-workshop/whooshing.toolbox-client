@@ -8,17 +8,23 @@ import NIOHTTP1
 import Foundation
 import AsyncHTTPClient
 
+@usableFromInline
 final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @unchecked Sendable {
+    @usableFromInline
     typealias Value = APIReqClient
+    @usableFromInline
     typealias Errcase = ApiClient.Errcase
+    @usableFromInline
     typealias Failure = ApiClient.Failure
 
+    @inlinable
     static func new(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator) -> Self {
         let res = Self(eventLoop: eventLoop, logger: logger, byteBufferAllocator: byteBufferAllocator)
         res.ioHandler = API.RequestIOCrypto(client: res, logger: logger)
         return res
     }
     
+    @inlinable
     func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {
@@ -31,11 +37,13 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         }
     }
 
+    @usableFromInline
     struct JSONData: Codable {
         let data: Data
     }
     
-    private func _send(
+    @inlinable
+    func _send(
         request: HTTPRequest,
         channel: Channel,
         handler: RequestWrapperHandler,
@@ -58,12 +66,14 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         }
     }
 
+    @usableFromInline
     struct AuthExchangeJSON: Encodable {
         let credential: Data
         let tokenEncrypted: Data
     }
 
     /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行加密并哈希
+    @usableFromInline
     func authExchange(
         request: HTTPRequest,
         handler: RequestWrapperHandler,

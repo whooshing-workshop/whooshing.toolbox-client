@@ -18,14 +18,18 @@ open class ReqClient<IOHandler>: @unchecked Sendable where IOHandler: RequestCry
     public var ioHandler: IOHandler!
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
+    @inlinable
     public weak var channel: Channel? {
         if let channel = __channel, channel.isActive { return channel }
         return nil
     }
     
-    private weak var __channel: Channel?
-    private var lock: NIOLock = .init()
-    private let removableHandlerNames: [String] = [
+    @usableFromInline
+    private(set) weak var __channel: Channel?
+    @usableFromInline
+    private(set) var lock: NIOLock = .init()
+    @usableFromInline
+    let removableHandlerNames: [String] = [
         "Whooshing Crypto Handler",
         "NIO HTTPRequestEncoder",
         "NIO HTTPResponseDecoder",
@@ -33,6 +37,7 @@ open class ReqClient<IOHandler>: @unchecked Sendable where IOHandler: RequestCry
         "Whooshing Request Wrapper Handler"
     ]
     
+    @inlinable
     public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: IOHandler? = nil) {
         self.eventLoop = eventLoop
         self.fileEventLoop = eventLoop.next()
@@ -44,6 +49,7 @@ open class ReqClient<IOHandler>: @unchecked Sendable where IOHandler: RequestCry
  
 extension ReqClient {
     
+    @frozen
     public enum Errcase: String, ErrList {
         case requestFormatError = "请求格式有误"
         case requestBodyTooLarge = "请求的内容过大"
@@ -56,6 +62,7 @@ extension ReqClient {
         case tcpHandlerFailed = "TCP 中间流处理器处理失败"
     }
 
+    @inlinable
     public func makeChannel(url: WebURI) -> EventLoopRes<(Channel, RequestWrapperHandler, domain: String?), Errcase> {
         
         guard [.http, .https].contains(url.scheme) else {
@@ -119,6 +126,7 @@ extension ReqClient {
         }.withError(Errcase.tcpHandlerInitialFailed)
     }
 
+    @inlinable
     public func send(
         _ client: HTTPRequest,
         channel: Channel,
@@ -138,6 +146,7 @@ extension ReqClient {
         }
     }
 
+    @inlinable
     public func closeAll() async {
         for (_, channel) in channelPool {
             try? await channel.close(mode: .all)
@@ -145,12 +154,14 @@ extension ReqClient {
         channelPool.removeAll()
     }
     
+    @inlinable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
         eventLoop.makeResultWithTask {  () throws(BscError<Errcase>) in
             try await self.removeHTTPHandlers().get()
         }
     }
     
+    @inlinable
     public func removeHTTPHandlers() async -> Res<Void, Errcase> {
         await .async {
             guard let channel = self.channel else { return }
