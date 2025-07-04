@@ -6,9 +6,11 @@ import NIOFileSystem
 import ErrorHandle
 import AsyncAlgorithms
 
-public extension ReqClient {
-    enum EncodeErr: String, ErrList {
-        public var domain: String { "woo.sys.reqclient.body.encode.err" }
+public extension HTTPBody {
+    enum EncodeErrcase: String, ErrList {
+        case dataEncodeFailed = "数据编码失败"
+        case streamEncodeFailed = "流数据编码失败"
+        
         case fileInfoGetFailed = "文件信息获取失败"
         case fileOperationUnknowErr = "文件操作时出现未知错误"
         case fileReadFailed = "文件读取时失败"
@@ -28,12 +30,15 @@ public extension HTTPBody {
     /// - Parameter data: 要编码的原始数据，其转为字节可能出错。
     /// - Returns: 包含二进制内容的 `HTTPBody`，其 `Content-Type` 默认为 `application/octet-stream`；若为字符串则为 `text/plain`。
     /// - Throws: 如果 `data` 转换为字节失败，则抛出相关错误。
-    static func data<T: ThrowableDataConvertable>(_ data: T) throws -> Self {
+    static func data<T: ThrowableDataConvertable>(_ data: T) -> Res<Self, EncodeErrcase> {
         var headers: HTTPHeaders = ["content-type": "application/octet-stream"]
         if data is String {
             headers.replaceOrAdd(name: "content-type", value: "text/plain")
         }
-        return .init(type: try .bytes(.init(data: data.data())), headers: headers)
+        return .init(throws: .dataEncodeFailed) {
+            let bytes = try ByteBuffer(data: data.dataRes.get())
+            return .init(type: .bytes(bytes), headers: headers)
+        }
     }
     
     /// 使用纯文本创建 HTTP 请求体。
@@ -41,8 +46,8 @@ public extension HTTPBody {
     /// - Parameter text: 文本字符串。
     /// - Returns: 构造的 HTTPBody，Content-Type 为 `text/plain`。
     /// - Throws: 若字符串转换失败将抛出错误。
-    static func text(_ text: String) throws -> Self {
-        try .data(text)
+    static func text(_ text: String) -> Res<Self, EncodeErrcase> {
+        Self.data(text)
     }
     
     /// 使用任意支持安全转换的 data 创建 HTTP 请求体。
@@ -50,7 +55,7 @@ public extension HTTPBody {
     /// - Parameter data: 可转换的数据对象，可安全转换为字节。
     /// - Returns: 构造的 HTTPBody，类型为 `.bytes`。
     static func data<T: SafeDataConvertable>(_ data: T) -> Self {
-        .bytes(.init(data: data.data()))
+        Self.bytes(ByteBuffer(data: data.data))
     }
     
     /// 使用 `Encodable` 类型创建 JSON 格式的 HTTP 请求体。
@@ -58,8 +63,11 @@ public extension HTTPBody {
     /// - Parameter value: 要编码的可编码对象。
     /// - Returns: JSON 编码的 HTTPBody，请求头包含 `application/json`。
     /// - Throws: JSON 编码失败时抛出错误。
-    static func json<T: Encodable>(_ value: T) throws -> Self {
-        .init(type: .bytes(.init(data: try JSONEncoder().encode(value))), headers: ["content-type": "application/json"])
+    static func json<T: Encodable>(_ value: T) -> Res<Self, EncodeErrcase> {
+        .init(throws: .dataEncodeFailed) {
+            let bytes = try ByteBuffer(data: JSONEncoder().encode(value))
+            return .init(type: .bytes(bytes), headers: ["content-type": "application/json"])
+        }
     }
 }
 
@@ -76,11 +84,12 @@ public extension HTTPBody {
             Task {
                 do {
                     for try await chunk in stream {
-                        await res.send(.init(data: try chunk.data()))
+                        await res.send(.init(data: try chunk.dataRes.get()))
                     }
                     res.finish()
                 } catch {
-                    res.fail(error)
+                    let err = EncodeErrcase.streamEncodeFailed.subErr(error)
+                    res.fail(err)
                 }
             }
             return .init(type: .stream(res))
@@ -104,7 +113,8 @@ public extension HTTPBody {
                     }
                     res.finish()
                 } catch {
-                    res.fail(error)
+                    let err = EncodeErrcase.streamEncodeFailed.subErr(error)
+                    res.fail(err)
                 }
             }
             return .init(type: .stream(res))
@@ -138,7 +148,7 @@ public extension HTTPBody {
                 progress?.finish()
             } catch {
                 try await fileHandle?.close()
-                res.fail(ReqClient.EncodeErr.fileOperationUnknowErr.d(14033).subErr(error))
+                res.fail(EncodeErrcase.fileOperationUnknowErr.subErr(error))
                 progress?.finish(throwing: error)
             }
         }

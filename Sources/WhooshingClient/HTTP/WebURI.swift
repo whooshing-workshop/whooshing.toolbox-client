@@ -18,6 +18,12 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         public var description: String { self.rawValue }
     }
     
+    /// URI 解析过程中可能抛出的错误类型。
+    /// 用于指示非法格式的 URI 字符串。
+    public enum Errcase: String, ErrList {
+        case parseFailed = "URI 解析失败"
+    }
+    
     /// URI 使用的协议方案（如 http、https 等）。
     public let scheme: Scheme
     /// URI 的主机名或 IP 地址。
@@ -54,14 +60,24 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
     ///
     /// - Parameter string: 标准 URI 字符串。
     /// - Throws: 如果字符串格式非法，将抛出 URI 解析失败错误。
-    public init(string: String) throws {
+    public static func new(string: String) -> Res<Self, Errcase> {
+        .init { () throws(Errcase.ErrType) in
+            try Self.init(string: string)
+        }
+    }
+    
+    /// 通过原始 URL 字符串创建 WebURI 实例。
+    ///
+    /// - Parameter string: 标准 URI 字符串。
+    /// - Throws: 如果字符串格式非法，将抛出 URI 解析失败错误。
+    public init(string: String) throws(Errcase.ErrType) {
         guard
             let url = URLComponents(string: string),
             let schemeStr = url.scheme?.lowercased(),
             let scheme = Scheme(rawValue: schemeStr),
             let host = url.host
         else {
-            throw Err.parseFailed.d("所提供的 URI 不合法 (\(string))", 14080)
+            throw Errcase.parseFailed.d("所提供的 URI 不合法 (\(string))")
         }
         
         self.scheme = scheme
@@ -127,13 +143,6 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         
         self.string = Self.combineURI(scheme: scheme, host: host, port: port, path: path, query: self.query, fragment: fragment)
         self.queryPath = (self.path + (self.query == nil ? "" : "?\(self.query!)")).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-    }
-    
-    /// URI 解析过程中可能抛出的错误类型。
-    /// 用于指示非法格式的 URI 字符串。
-    public enum Err: String, ErrList {
-        public var domain: String { "woo.sys.client.uri.err" }
-        case parseFailed = "URI 解析失败"
     }
     
     /// 判断当前 host 是否为域名而非 IP 地址。

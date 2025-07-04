@@ -3,18 +3,19 @@ import ErrorHandle
 import NIOConcurrencyHelpers
 import NIO
 import NIOExtras
+import NIOAdvanced
 import NIOPosix
 import Logging
 import Foundation
 import AsyncHTTPClient
 import NIOHTTP1
 
-open class ReqClient: @unchecked Sendable {
+open class ReqClient<IOHandler>: @unchecked Sendable where IOHandler: RequestCryptoIOHandler {
     public let eventLoop: EventLoop
     public let fileEventLoop: EventLoop
     public let logger: Logger?
     public let byteBufferAllocator: ByteBufferAllocator
-    public var ioHandler: RequestCryptoIOHandler!
+    public var ioHandler: IOHandler!
     public let storage: SendableStorage = .init()
     public internal(set) var channelPool: SendableDictionary<String, Channel> = .init()
     public weak var channel: Channel? {
@@ -32,18 +33,33 @@ open class ReqClient: @unchecked Sendable {
         "Whooshing Request Wrapper Handler"
     ]
     
-    public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: RequestCryptoIOHandler? = nil) {
+    public required init(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator, ioHandler: IOHandler? = nil) {
         self.eventLoop = eventLoop
         self.fileEventLoop = eventLoop.next()
         self.logger = logger
         self.byteBufferAllocator = byteBufferAllocator
         self.ioHandler = ioHandler
     }
+}
+ 
+extension ReqClient {
+    
+    public enum Errcase: String, ErrList {
+        case requestFormatError = "请求格式有误"
+        case requestBodyTooLarge = "请求的内容过大"
+        case requestParseFailed = "服务器响应头解包时出错"
+        case requestDomainParseFailed = "域名解析失败"
+        case tcpHandlerInitialFailed = "TCP 中间流处理器初始化失败"
+        case tcpHandlerRemoveFailed = "TCP 中间流处理器移除失败"
+        case tcpSocketConnectFailed = "TCP 连接失败"
+        case tcpSendFailed = "TCP 通道写入数据失败"
+        case tcpHandlerFailed = "TCP 中间流处理器处理失败"
+    }
 
-    public func makeChannel(url: WebURI) -> EventLoopFuture<(Channel, RequestWrapperHandler, domain: String?)> {
+    public func makeChannel(url: WebURI) -> EventLoopRes<(Channel, RequestWrapperHandler, domain: String?), Errcase> {
         
         guard [.http, .https].contains(url.scheme) else {
-            return eventLoop.makeFailedFuture(Err.requestFormatError.d("预期请求协议为 http 或 https，但得到 \(url.scheme)", 13052))
+            return eventLoop.makeFailedResult(Errcase.requestFormatError, "预期请求协议为 http 或 https，但得到 \(url.scheme)")
         }
 
         let port: Int
@@ -52,7 +68,7 @@ open class ReqClient: @unchecked Sendable {
             port = url.port ?? (url.scheme == .https ? 443 : 20002)
         } else {
             guard let p = url.port else {
-                return eventLoop.makeFailedFuture(Err.requestFormatError.d("无法获取 Port", 10081))
+                return eventLoop.makeFailedResult(Errcase.requestFormatError, "无法获取 Port")
             }
             port = p
         }
@@ -63,7 +79,7 @@ open class ReqClient: @unchecked Sendable {
             return channel.pipeline.handler(type: RequestWrapperHandler.self).flatMap { handler in
                 self.__channel = channel
                 return channel.eventLoop.makeSucceededFuture((channel, handler, isDomainHost ? url.host : nil))
-            }
+            }.withError(Errcase.tcpHandlerInitialFailed)
         }
         
         let cryptoHandler = RequestCryptoHandler(logger: logger, ioHandler: ioHandler)
@@ -100,22 +116,25 @@ open class ReqClient: @unchecked Sendable {
             self.channelPool[id] = channel
             self.__channel = channel
             return (channel, wrapperHandler, isDomainHost ? url.host : nil)
-        }
+        }.withError(Errcase.tcpHandlerInitialFailed)
     }
 
     public func send(
         _ client: HTTPRequest,
         channel: Channel,
         handler: RequestWrapperHandler
-    ) -> EventLoopFuture<HTTPResponse> {
-        let promise = channel.eventLoop.makePromise(of: HTTPResponse.self)
+    ) -> EventLoopRes<HTTPResponse, Errcase> {
+        let promise: EventLoopTarget<HTTPResponse, RequestWrapperHandler.Errcase.ErrType> = channel.eventLoop.makeTarget(of: HTTPResponse.self)
         handler.promise = promise
-        return channel.writeAndFlush(client).flatMapError { err in
+        return channel.writeAndFlush(client)
+            .withError(Errcase.tcpSendFailed)
+            .flatMapError
+        { err in
             self.logger?.warning("\(err)")
-            promise.fail(err)
-            return channel.eventLoop.makeFailedFuture(err)
+            promise.fail(RequestWrapperHandler.Errcase.cancelled.d())
+            return channel.eventLoop.makeFailedResult(err)
         }.flatMap {
-            promise.futureResult
+            promise.futureResult.errCast(Errcase.tcpHandlerFailed)
         }
     }
 
@@ -126,24 +145,18 @@ open class ReqClient: @unchecked Sendable {
         channelPool.removeAll()
     }
     
-    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
-        eventLoop.makeFutureWithTask {
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
+        eventLoop.makeResultWithTask { () throws(BscError<Errcase>) in
             try await self.removeHTTPHandlers()
         }
     }
     
-    public func removeHTTPHandlers() async throws {
+    public func removeHTTPHandlers() async throws(BscError<Errcase>) {
         guard let channel = self.channel else { return }
         for name in self.removableHandlerNames {
-            try await channel.pipeline.removeHandler(name: name)
+            try await required(throws: Errcase.tcpHandlerRemoveFailed) {
+                try await channel.pipeline.removeHandler(name: name)
+            }
         }
-    }
-
-    enum Err: String, ErrList {
-        var domain: String { "woo.sys.client.err" }
-        case requestFormatError = "请求格式有误"
-        case requestBodyTooLarge = "请求的内容过大"
-        case requestParseFailed = "服务器响应头解包时出错"
-        case requestDomainParseFailed = "域名解析失败"
     }
 }

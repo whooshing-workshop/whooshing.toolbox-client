@@ -2,8 +2,9 @@ import Cryptos
 import ErrorHandle
 import DataConvertable
 import NIOCore
-import Logging
 import NIOHTTP1
+import NIOAdvanced
+import Logging
 import Foundation
 import AsyncHTTPClient
 
@@ -12,6 +13,15 @@ extension APIReqClient {
 }
 
 enum API {
+    public enum Errcase: String, ErrList {
+        case requestEncryptFailed = "请求数据加密时失败"
+        case responseDecryptFailed = "响应数据解密时失败"
+        case responseParseErrorFailed = "从响应数据解析错误信息时失败"
+        case parseResponseFailed = "解析响应数据时失败"
+        
+        case internalFailure = "内部错误"
+    }
+    
     final class RequestIOData: SendableStorage.Key, Sendable {
         typealias Value = RequestIOData
         let credential: String
@@ -28,112 +38,128 @@ enum API {
     
     struct RequestIOCrypto: RequestCryptoIOHandler, Sendable {
         
+        typealias Failure = Errcase.ErrType
+        
         weak private(set) var client: APIReqClient?
         let logger: Logger?
         
         var isAvaliable: Bool { client?.apiRequestIoData != nil }
         
         /// 发送请求时，进行编码并加密
-        func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
-            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededFuture(data) }
-            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12006)) }
+        func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
                 logger?.trace("API.Client.HTTP-发送请求，进行加密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
                 if let key = ioData.connectionKeys[id] {
-                    cipher = try Crypto.Symm.encrypt(data, key: key)
+                    cipher = try required(throws: Errcase.requestEncryptFailed) {
+                        try Crypto.Symm.encrypt(data, key: key).get()
+                    }
                 } else {
                     // 代表首次请求，直接发送明文
                     // 用户凭据可明文发送，且用户口令会加密处理，因此整个请求无需加密
                     cipher = .init(buffer: data)
                 }
                 let buffer = ByteBuffer(data: cipher)
-                return context.eventLoop.makeSucceededFuture(buffer)
+                return context.eventLoop.makeSucceededResult(buffer)
             } catch let err {
-                return context.eventLoop.makeFailedFuture(err)
+                return context.eventLoop.makeFailedResult(err)
             }
         }
 
         /// 收到响应时，进行解密并解码
-        func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopFuture<ByteBuffer> {
-            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededFuture(data) }
-            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12010)) }
+        func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
             let id = ObjectIdentifier(context.channel)
 
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
 
             if let _ = ioData.errorTemps[id] {
+                // 如果错误已经存在了，则直接报错
                 let err = parseError(body: data)
                 ioData.errorTemps[id] = nil
-                return context.eventLoop.makeFailedFuture(err)
+                return context.eventLoop.makeFailedResult(err)
             } else {
+                // 错误不存在，从对方的相应中尝试解析出错误
                 if let status = lightweightParseHTTP1StatusCode(from: data) {
                     ioData.errorTemps[id] = status
-                    return context.eventLoop.makeSucceededFuture(data)
+                    return context.eventLoop.makeSucceededResult(data)
                 }
             }
-
-            do {
+            
+            return context.eventLoop.makeResultWithTask { () throws(Errcase.ErrType) in
                 logger?.trace("API.Client.HTTP-收到响应，进行解密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
                 var plain: ByteBuffer
                 if let key = ioData.connectionKeys[id] {
-                    plain = try Crypto.Symm.decrypt(.init(buffer: data), key: key)
+                    plain = try required(throws: Errcase.responseDecryptFailed) {
+                        try Crypto.Symm.decrypt(.init(buffer: data), key: key).get()
+                    }
                 } else {
-                    guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 14005).adds(.internalServerError) }
+                    guard let token = Data(base64Encoded: ioData.token) else {
+                        throw Errcase.parseResponseFailed.d("用户口令")
+                    }
                     let tokenKey = Crypto.Symm.Key(data: token)
-                    plain = try Crypto.Symm.decrypt(.init(buffer: data), key: tokenKey)
+                    plain = try required(throws: Errcase.responseDecryptFailed) {
+                        try Crypto.Symm.decrypt(.init(buffer: data), key: tokenKey).get()
+                    }
                 }
-                return context.eventLoop.makeSucceededFuture(plain)
-            } catch let err {
-                return context.eventLoop.makeFailedFuture(err)
+                return plain
             }
         }
 
         // 检查 response 是否为 HTTP 格式的头，如果是，则返回其状态码
         func checkHeader(res: ByteBuffer) -> HTTPResponseStatus? {
-            do {
-                let res = try String(data: res.data())
-                let lines = res.split(separator: "\r\n")
-                let fields = lines[0].split(separator: " ")
-                if fields.count >= 3, let code = Int(fields[1]) {
-                    return .init(statusCode: code)
-                }
-            } catch { }
+            guard let res = try? String.make(data: res.data).get() else {
+                return nil
+            }
+            let lines = res.split(separator: "\r\n")
+            let fields = lines[0].split(separator: " ")
+            if fields.count >= 3, let code = Int(fields[1]) {
+                return .init(statusCode: code)
+            }
+            
             return nil
         }
 
         // 检查 response 是否为 HTTP 格式且包括错误状态码
-        func parseError(body: ByteBuffer) -> Error {
+        func parseError(body: ByteBuffer) -> Errcase.ErrType {
             struct BodyReply: Codable {
                 let error: Bool
                 let reason: String
             }
+            
+            let reply: BodyReply
             do {
-                let reply = try Guard({ try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body)) }, throw: ApiClient.InternalErr.protocolInvalid.d("应当解析出 Error 信息，但失败", 14012))
-                if reply.error {
-                    return ApiClient.Err.unknowError.d(reply.reason, 13001).adds(.internalServerError)
-                } else {
-                    throw ApiClient.InternalErr.protocolInvalid.d("应当解析出 Error 信息，但失败", 14011)
+                reply = try required(throws: Errcase.responseParseErrorFailed, "应当解析出 Error 信息") {
+                    try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body))
                 }
             } catch let err {
                 return err
             }
+                
+            if reply.error {
+                return Errcase.internalFailure.d(reply.reason)
+            } else {
+                return Errcase.responseParseErrorFailed.d("应当解析出 Error 信息，但失败")
+            }
         }
 
         // 连线建立
-        func connectionStart(context: ChannelHandlerContext) -> EventLoopFuture<Void> {
+        func connectionStart(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
             logger?.debug("API.Client-连线建立: \(context.channel.clientAddrInfo)")
-            return context.eventLoop.makeSucceededVoidFuture()
+            return context.eventLoop.makeSucceededVoidResult()
         }
 
         // 连线结束，进行清理
-        func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> {
+        func connectionEnd(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
             logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
             let id = ObjectIdentifier(context.channel)
             client?.apiRequestIoData?.connectionKeys[id] = nil
             client?.apiRequestIoData?.readingBufferDatas[id] = nil
-            return context.eventLoop.makeSucceededVoidFuture()
+            return context.eventLoop.makeSucceededVoidResult()
         }
         
         func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> HTTPResponseStatus? {

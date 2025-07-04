@@ -2,6 +2,7 @@ import Cryptos
 import ErrorHandle
 import NIOConcurrencyHelpers
 import NIO
+import NIOAdvanced
 import Logging
 import NIOHTTP1
 import AsyncHTTPClient
@@ -49,14 +50,6 @@ public final class ApiClient: Sendable {
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
     }
     
-    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
-        self.client.removeHTTPHandlers(in: eventLoop)
-    }
-    
-    public func removeHTTPHandlers() async throws {
-        try await self.client.removeHTTPHandlers()
-    }
-    
     /// 关闭所有正在进行的连线
     public func closeAll() async {
         await client.closeAll()
@@ -72,9 +65,21 @@ public final class ApiClient: Sendable {
 
 /// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
+    
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
+        self.client.removeHTTPHandlers(in: eventLoop)
+            .errCast(Errcase.tcpHandlerRemoveFailed)
+    }
+    
+    public func removeHTTPHandlers() async throws(Failure) {
+        try await required(throws: Errcase.tcpHandlerRemoveFailed) {
+            try await self.client.removeHTTPHandlers()
+        }
+    }
+    
     public func send(
         _ request: HTTPRequest
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         client.send(request)
     }
 

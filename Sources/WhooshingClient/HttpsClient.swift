@@ -3,6 +3,7 @@ import AsyncAlgorithms
 import ErrorHandle
 import NIOConcurrencyHelpers
 import NIO
+import NIOAdvanced
 import Logging
 import NIOHTTP1
 import AsyncHTTPClient
@@ -19,14 +20,6 @@ import Foundation
 ///
 /// - Warning: 该类型并没有配置 Backpressure 机制，因此不适合发送大型数据流，谨慎使用
 public final class HttpsClient: WhooshingClient, @unchecked Sendable {
-    
-    public enum Err: String, ErrList {
-        public var domain: String { "woo.sys.httpsclient.err" }
-        case streamingEngageFailed = "流传输数据获取失败"
-        case urlConnectionFailed = "对该 url 目标地址连接失败"
-        case responseNotValid = "对方响应不合法"
-    }
-    
     public var key: Cryptos.Crypto.Symm.Key? { fatalError("永远不应调用此属性") }
     public var channel: (any NIOCore.Channel)? { fatalError("永远不应调用此属性") }
     public var fileEventLoop: any NIOCore.EventLoop
@@ -48,12 +41,14 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// 发送一个 `HTTPRequest` 请求，并返回异步的 `HTTPResponse`。
     ///
     /// - Parameter request: 要发送的请求对象。
-    /// - Returns: 一个 `EventLoopFuture`，其结果为 `HTTPResponse`。
-    /// - Throws: 若响应不合法或连接失败，抛出 `HttpsClient.Err` 中定义的错误。
+    /// - Returns: 一个 `EventLoopResult`，其结果为 `HTTPResponse`。
+    /// - Throws: 若响应不合法或连接失败，抛出 `HttpsClient.Errcase` 中定义的错误。
     public func send(
         _ request: HTTPRequest
-    ) -> EventLoopFuture<HTTPResponse> {
-        fileEventLoop.makeFutureWithTask { try await self.streamingSend(request) }
+    ) -> EventLoopResult<HTTPResponse, Failure> {
+        fileEventLoop.makeFutureWithTask { () throws(Failure) in
+            try await self.streamingSend(request)
+        }.withError()
     }
 
     /// 析构函数，在实例释放时关闭内部 HTTPClient。
@@ -64,26 +59,30 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// 清除当前上下文中的 HTTP handler（该方法目前为兼容协议所需，实际为空实现）。
     ///
     /// - Parameter eventLoop: 所属的 `EventLoop`。
-    /// - Returns: 一个立即完成的 `EventLoopFuture<Void>`。
-    public func removeHTTPHandlers(in eventLoop: any NIOCore.EventLoop) -> NIOCore.EventLoopFuture<Void> {
-        eventLoop.makeSucceededVoidFuture()
+    /// - Returns: 一个立即完成的 `EventLoopResult<Void>`。
+    ///
+    /// - Warning: 你永远不应当调用该方法
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
+        eventLoop.makeSucceededVoidResult()
     }
 
     /// 清除当前上下文中的 HTTP handler（异步接口，实际为空实现）。
     ///
-    /// - Throws: 无。
-    public func removeHTTPHandlers() async throws { return }
+    /// - Warning: 你永远不应当调用该方法
+    public func removeHTTPHandlers() async throws(Failure) { return }
 }
 
 extension HttpsClient {
-    private func streamingSend(
+    func streamingSend(
         _ request: HTTPRequest
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         var req = HTTPClientRequest(url: request.url.string)
         req.method = request.method
         req.headers = request.headers
         
-        try await Curl.isUriConnectable(request.url.string)
+        _ = try await required(throws: Errcase.urlConnectionFailed, request.url.string) {
+            try await Curl.isUriConnectable(request.url.string).get()
+        }
         
         if let body = request.body {
             switch body.type {
@@ -92,16 +91,21 @@ extension HttpsClient {
             }
         }
         self.logger?.info("HTTPS.Client-发送请求: \(request.url)")
-        let response = try await client.execute(req, deadline: .distantFuture, logger: logger)
+        let response = try await required(throws: Errcase.requestSendFailed, request.url.string) {
+            try await client.execute(req, deadline: .distantFuture, logger: logger)
+        }
         
         var res = HTTPResponse(status: response.status, version: response.version, headers: response.headers)
         
         for h in response.headers {
             if h.name == "content-length" {
                 guard let bodySize = Int(h.value) else {
-                    throw Err.responseNotValid.d("content-type 头大小解析失败", 15004)
+                    throw Errcase.responseParseFailed.d("content-type 头大小解析失败")
                 }
-                res.body = .bytes(try await response.body.collect(upTo: bodySize))
+                
+                res.body = try await required(throws: Errcase.streamingEngageFailed) {
+                    try await .bytes(response.body.collect(upTo: bodySize))
+                }
                 return res
             } else if h.name == "transfer-encoding" && h.value.lowercased() == "chunked" {
                 let stream = AsyncThrowingChannel<ByteBuffer, Error>()
@@ -113,13 +117,14 @@ extension HttpsClient {
                         }
                         stream.finish()
                     } catch {
-                        stream.fail(error)
+                        let err = Errcase.streamingEngageFailed.subErr(error)
+                        stream.fail(err)
                     }
                 }
                 res.body = .stream(stream)
                 return res
             }
         }
-        throw Err.responseNotValid.d("未找到 content-type 或 transfer-encoding 头", 15005)
+        throw Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头")
     }
 }

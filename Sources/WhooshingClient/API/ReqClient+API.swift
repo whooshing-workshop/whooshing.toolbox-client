@@ -1,34 +1,17 @@
 import ErrorHandle
 import DataConvertable
 import NIOCore
+import NIOAdvanced
 import Logging
 import Cryptos
 import NIOHTTP1
 import Foundation
 import AsyncHTTPClient
 
-public extension ApiClient {
-    enum Err: String, ErrList {
-        public typealias ErrType = HTTPResponseError
-        public var domain: String { "woo.sys.api.reqclient.err" }
-        case parseParaFailed = "解析请求参数时失败"
-        case badResponse = "响应状态码表示请求未成功"
-        case authenticationBadProtocol = "认证时协议协商错误"
-        case badProtocol = "传输机制错误"
-        case unknowError = "服务器错误"
-    }
-    
-    enum InternalErr: String, ErrList {
-        public var domain: String { "woo.sys.api.reqclient.internal.err" }
-        case requestParaMissing = "请求参数缺失"
-        case protocolInvalid = "交接机制发生错误"
-        case requestUrlNotValid = "Http 请求的 URL 不合法"
-        case unknowErr = "内部未知错误"
-    }
-}
-
-final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
+final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @unchecked Sendable {
     typealias Value = APIReqClient
+    typealias Errcase = ApiClient.Errcase
+    typealias Failure = ApiClient.Failure
 
     static func new(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator) -> Self {
         let res = Self(eventLoop: eventLoop, logger: logger, byteBufferAllocator: byteBufferAllocator)
@@ -38,8 +21,11 @@ final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
     
     func send(
         _ request: HTTPRequest
-    ) -> EventLoopFuture<HTTPResponse> {
-        self.makeChannel(url: request.url).flatMap { (channel, handler, domain) in
+    ) -> EventLoopResult<HTTPResponse, Failure> {
+        self.makeChannel(url: request.url)
+            .errCast(Errcase.channelAssignFailed)
+            .flatMap
+        { channel, handler, domain in
             self.logger?.info("API.Client-发送请求: \(channel.clientAddrInfo)")
             return self._send(request: request, channel: channel, handler: handler, domain: domain)
         }
@@ -49,10 +35,17 @@ final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
         let data: Data
     }
     
-    private func _send(request: HTTPRequest, channel: Channel, handler: RequestWrapperHandler, domain: String?) -> EventLoopFuture<HTTPResponse> {
+    private func _send(
+        request: HTTPRequest,
+        channel: Channel,
+        handler: RequestWrapperHandler,
+        domain: String?
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         let id = ObjectIdentifier(channel)
-        var r = eventLoop.makeSucceededVoidFuture()
-        guard let ioData = self.apiRequestIoData else { return eventLoop.makeFailedFuture(ApiClient.InternalErr.requestParaMissing.d("apiRequestIoData", 12013)) }
+        var r = eventLoop.makeSucceededVoidResult(throws: Failure.self)
+        guard let ioData = self.apiRequestIoData else {
+            return eventLoop.makeFailedResult(Errcase.internalFailure, "请求参数缺失: apiRequestIoData")
+        }
         if ioData.connectionKeys[id] == nil {
             self.logger?.debug("正在与服务器进行认证: \(channel.clientAddrInfo)")
             r = r.flatMap {
@@ -61,7 +54,7 @@ final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
         }
         return r.flatMap{
             self.logger?.debug("正在与服务器发送具体的请求: \(channel.clientAddrInfo)")
-            return self.send(request, channel: channel, handler: handler)
+            return self.send(request, channel: channel, handler: handler).errCast(Errcase.tcpSendFailed, "发送用户请求失败")
         }
     }
 
@@ -71,42 +64,86 @@ final class APIReqClient: ReqClient, SendableStorage.Key, @unchecked Sendable {
     }
 
     /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行加密并哈希
-    func authExchange(request: HTTPRequest, handler: RequestWrapperHandler, domain: String?, channel: Channel) -> EventLoopFuture<Void> {
-        do {
-            let ioData = self.apiRequestIoData!
-            let id = ObjectIdentifier(channel)
-            guard let credential = Data(base64Encoded: ioData.credential) else { throw ApiClient.Err.parseParaFailed.d("用户凭据", 12007).adds(.internalServerError) }
+    func authExchange(
+        request: HTTPRequest,
+        handler: RequestWrapperHandler,
+        domain: String?,
+        channel: Channel
+    ) -> EventLoopResult<Void, Failure> {
+        channel.eventLoop.makeResultWithTask { () throws(Failure) in
+            guard let ioData = self.apiRequestIoData else {
+                throw Errcase.internalFailure.d("apiRequestIoData 参数未找到")
+            }
+            
+            guard let credential = Data(base64Encoded: ioData.credential) else {
+                throw Errcase.badRequest.d("解析请求中的 用户凭据 数据失败")
+            }
+            
             self.logger?.trace("API.Client-认证中: 使用用户口令加密用户口令本身")
-            guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 12008).adds(.internalServerError) }
+            guard let token = Data(base64Encoded: ioData.token) else {
+                throw Errcase.badRequest.d("解析请求中的 用户口令 数据失败")
+            }
+            
             let tokenKey = Crypto.Symm.Key(data: token)
-            let tokenEncrypted = try Crypto.Symm.encrypt(token, key: tokenKey)
+            let tokenEncrypted = try required(throws: Errcase.encryptFailed) {
+                try Crypto.Symm.encrypt(token, key: tokenKey).get()
+            }
+            
             self.logger?.trace("API.Client-认证中: 将凭据和加密后的用户口令进行 json 编码")
+            let body = try required(throws: Errcase.jsonEncodeFailed) {
+                try HTTPBody.json(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)).get()
+            }
+            
             self.logger?.trace("API.Client-认证中: 发送用户凭据以及用户口令")
             var headers: HTTPHeaders = ["content-type": "application/json"]
             if let domain = domain {
                 headers.replaceOrAdd(name: "host", value: domain)
             }
-            let req = HTTPRequest(method: .POST, url: request.url, headers: headers, body: try! .json(AuthExchangeJSON(credential: credential, tokenEncrypted: tokenEncrypted)))
-            return self.send(req, channel: channel, handler: handler).flatMapThrowing { res in
+            
+            return (
+                ioData,
+                HTTPRequest(
+                    method: .POST,
+                    url: request.url,
+                    headers: headers,
+                    body: body
+                )
+            )
+        }.flatMap { (ioData: API.RequestIOData, req: HTTPRequest) in
+            self.send(req, channel: channel, handler: handler)
+                .errCast(Errcase.tcpSendFailed)
+                .flatMapThrowing
+            { res throws(Failure) in
                 self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
-                guard res.status == .ok else { throw ApiClient.Err.badResponse.d(14002).adds(res.status) }
-                guard let resBody = res.body else { throw ApiClient.Err.badProtocol.d(15012).adds(.internalServerError) }
+                guard res.status == .ok else {
+                    throw Errcase.badResponse.d("响应状态码为: \(res.status)")
+                }
+                
+                guard let resBody = res.body else {
+                    throw Errcase.badResponse.d("响应体为空")
+                }
+                
                 // 当向认证模块发送认证请求之后，应当得到一个使用用户口令加密的新密钥，并使用该新密钥进行后续的通讯加密
                 self.logger?.trace("API.Client-正在完成认证: 解析服务器的新密钥")
-                guard let token = Data(base64Encoded: ioData.token) else { throw ApiClient.Err.parseParaFailed.d("用户口令", 14003).adds(.internalServerError) }
+                guard let token = Data(base64Encoded: ioData.token) else {
+                    throw Errcase.badResponse.d("未解析得到用户口令")
+                }
                 let tokenKey = Crypto.Symm.Key(data: token)
+                
                 self.logger?.trace("API.Client-正在完成认证: 获取对方发来的加密新密钥")
-                let keyEncrypted = try resBody.json(as: JSONData.self).data
+                let keyEncrypted = try required(throws: Errcase.jsonDecodeFailed) {
+                    try resBody.json(as: JSONData.self).get().data
+                }
+                
                 self.logger?.trace("API.Client-正在完成认证: 使用用户口令解密新密钥")
-                let newKey: Crypto.Symm.Key = try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey)
+                let newKey: Crypto.Symm.Key = try required(throws: Errcase.decryptFailed) {
+                    try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey).get()
+                }
+                
+                let id = ObjectIdentifier(channel)
+                
                 self.logger?.trace("API.Client-正在完成认证: 注册该新密钥，用于将来的连线加密")
                 ioData.connectionKeys[id] = newKey
-            }
-        } catch let err {
-            if let err = err as? HTTPResponseError {
-                return channel.eventLoop.makeFailedFuture(err)
-            } else {
-                return channel.eventLoop.makeFailedFuture(ApiClient.Err.unknowError.d(15022).subErr(err).adds(.internalServerError))
             }
         }
     }

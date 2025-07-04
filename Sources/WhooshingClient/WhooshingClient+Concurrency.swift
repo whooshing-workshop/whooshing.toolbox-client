@@ -14,7 +14,7 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         try await send(.GET, to: url, body: body, headers: headers)
     }
     
@@ -30,7 +30,7 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         try await send(.POST, to: url, body: body, headers: headers)
     }
     
@@ -46,7 +46,7 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         try await send(.PATCH, to: url, body: body, headers: headers)
     }
     
@@ -62,7 +62,7 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         try await send(.PUT, to: url, body: body, headers: headers)
     }
     
@@ -78,7 +78,7 @@ public extension WhooshingClient {
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         try await send(.DELETE, to: url, body: body, headers: headers)
     }
     
@@ -96,8 +96,8 @@ public extension WhooshingClient {
         to url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) async throws -> HTTPResponse {
+    ) async throws(Failure) -> HTTPResponse {
         let request = HTTPRequest(method: method, url: url, headers: headers, body: body)
-        return try await  send(request).get()
+        return try await send(request).get()
     }
 }
