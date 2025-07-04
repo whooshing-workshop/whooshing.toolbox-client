@@ -146,23 +146,18 @@ extension ReqClient {
     }
     
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
-        eventLoop.makeResultWithTask { () throws(BscError<Errcase>) in
-            do {
-                try await self.removeHTTPHandlers()
-            } catch {
-                throw error as! Errcase.ErrType
-            }
+        eventLoop.makeResultWithTask {  () throws(BscError<Errcase>) in
+            try await self.removeHTTPHandlers().get()
         }
     }
     
-    // 这里将 throws 指定为具体错误类型会导致 swift 6.1 编译器崩溃，不知为何
-    // 因此只能暂时使用 throws 来处理
-    // 而实际上该函数应当以 `throws(Errcase.ErrType)` 约束其抛出的错误类型
-    public func removeHTTPHandlers() async throws {
-        guard let channel = self.channel else { return }
-        for name in self.removableHandlerNames {
-            try await required(throws: Errcase.tcpHandlerRemoveFailed) {
-                try await channel.pipeline.removeHandler(name: name)
+    public func removeHTTPHandlers() async -> Res<Void, Errcase> {
+        await .async {
+            guard let channel = self.channel else { return }
+            for name in self.removableHandlerNames {
+                try await required(throws: Errcase.tcpHandlerRemoveFailed) {
+                    try await channel.pipeline.removeHandler(name: name)
+                }
             }
         }
     }

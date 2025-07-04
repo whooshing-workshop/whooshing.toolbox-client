@@ -69,7 +69,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// 清除当前上下文中的 HTTP handler（异步接口，实际为空实现）。
     ///
     /// - Warning: 你永远不应当调用该方法
-    public func removeHTTPHandlers() async throws(Failure) { return }
+    public func removeHTTPHandlers() async -> Res<Void, Errcase> { return .success(()) }
 }
 
 extension HttpsClient {

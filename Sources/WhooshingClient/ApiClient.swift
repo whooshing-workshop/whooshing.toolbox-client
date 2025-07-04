@@ -71,10 +71,8 @@ extension ApiClient: WhooshingClient {
             .errCast(Errcase.tcpHandlerRemoveFailed)
     }
     
-    public func removeHTTPHandlers() async throws(Failure) {
-        try await required(throws: Errcase.tcpHandlerRemoveFailed) {
-            try await self.client.removeHTTPHandlers()
-        }
+    public func removeHTTPHandlers() async -> Res<Void, Errcase> {
+        await self.client.removeHTTPHandlers().mapError(as: Errcase.tcpHandlerRemoveFailed)
     }
     
     public func send(
