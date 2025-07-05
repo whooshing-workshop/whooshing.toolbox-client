@@ -157,7 +157,7 @@ extension ReqClient {
     }
     
     public func removeHTTPHandlers() async -> Res<Void, Errcase> {
-        await .async {
+        await .async { () throws(Errcase.ErrType) in
             guard let channel = self.channel else { return }
             for name in self.removableHandlerNames {
                 try await required(throws: Errcase.tcpHandlerRemoveFailed) {

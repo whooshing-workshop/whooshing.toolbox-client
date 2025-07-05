@@ -29,7 +29,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {
         self.makeChannel(url: request.url)
-            .errCast(Errcase.channelAssignFailed)
+            .errCast(Errcase.tcpChannelAssignFailed)
             .flatMap
         { channel, handler, domain in
             self.logger?.info("API.Client-发送请求: \(channel.clientAddrInfo)")
@@ -116,42 +116,39 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
                     body: body
                 )
             )
-        }.flatMap { (ioData: API.RequestIOData, req: HTTPRequest) in
-            self.send(req, channel: channel, handler: handler)
-                .errCast(Errcase.tcpSendFailed)
-                .flatMapThrowing
-            { res throws(Failure) in
-                self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
-                guard res.status == .ok else {
-                    throw Errcase.badResponse.d("响应状态码为: \(res.status)")
-                }
-                
-                guard let resBody = res.body else {
-                    throw Errcase.badResponse.d("响应体为空")
-                }
-                
-                // 当向认证模块发送认证请求之后，应当得到一个使用用户口令加密的新密钥，并使用该新密钥进行后续的通讯加密
-                self.logger?.trace("API.Client-正在完成认证: 解析服务器的新密钥")
-                guard let token = Data(base64Encoded: ioData.token) else {
-                    throw Errcase.badResponse.d("未解析得到用户口令")
-                }
-                let tokenKey = Crypto.Symm.Key(data: token)
-                
-                self.logger?.trace("API.Client-正在完成认证: 获取对方发来的加密新密钥")
-                let keyEncrypted = try required(throws: Errcase.jsonDecodeFailed) {
-                    try resBody.json(as: JSONData.self).get().data
-                }
-                
-                self.logger?.trace("API.Client-正在完成认证: 使用用户口令解密新密钥")
-                let newKey: Crypto.Symm.Key = try required(throws: Errcase.decryptFailed) {
-                    try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey).get()
-                }
-                
-                let id = ObjectIdentifier(channel)
-                
-                self.logger?.trace("API.Client-正在完成认证: 注册该新密钥，用于将来的连线加密")
-                ioData.connectionKeys[id] = newKey
+        }.flatMap { ioData, req in
+            self.send(req, channel: channel, handler: handler).errCast(Errcase.tcpSendFailed).map { (ioData, $0) }
+        }.flatMapThrowing { ioData, res throws(Failure) in
+            self.logger?.trace("API.Client-正在完成认证: 认证请求发送完成")
+            guard res.status == .ok else {
+                throw Errcase.badResponse.d("响应状态码为: \(res.status)")
             }
+            
+            guard let resBody = res.body else {
+                throw Errcase.badResponse.d("响应体为空")
+            }
+            
+            // 当向认证模块发送认证请求之后，应当得到一个使用用户口令加密的新密钥，并使用该新密钥进行后续的通讯加密
+            self.logger?.trace("API.Client-正在完成认证: 解析服务器的新密钥")
+            guard let token = Data(base64Encoded: ioData.token) else {
+                throw Errcase.badResponse.d("未解析得到用户口令")
+            }
+            let tokenKey = Crypto.Symm.Key(data: token)
+            
+            self.logger?.trace("API.Client-正在完成认证: 获取对方发来的加密新密钥")
+            let keyEncrypted = try required(throws: Errcase.jsonDecodeFailed) {
+                try resBody.json(as: JSONData.self).get().data
+            }
+            
+            self.logger?.trace("API.Client-正在完成认证: 使用用户口令解密新密钥")
+            let newKey: Crypto.Symm.Key = try required(throws: Errcase.decryptFailed) {
+                try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey).get()
+            }
+            
+            let id = ObjectIdentifier(channel)
+            
+            self.logger?.trace("API.Client-正在完成认证: 注册该新密钥，用于将来的连线加密")
+            ioData.connectionKeys[id] = newKey
         }
     }
 

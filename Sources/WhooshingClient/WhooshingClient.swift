@@ -58,7 +58,7 @@ import ErrorHandle
 public protocol WhooshingClient: AnyObject,Sendable {
     
     associatedtype Errcase: ErrList
-    typealias Failure = WhooshingClientError<Self>
+    typealias Failure = Errcase.ErrType
     
     /// 用于文件操作的EventLoop
     var fileEventLoop: EventLoop { get }
@@ -186,5 +186,43 @@ public extension WhooshingClient {
     ) -> EventLoopResult<HTTPResponse, Failure> {
         let request = HTTPRequest(method: method, url: url, headers: headers, body: body)
         return send(request)
+    }
+}
+
+public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where Errcase: ErrList {
+    @inlinable public var fileEventLoop: any EventLoop { getFileEventLoop() }
+    @inlinable public var key: Cryptos.Crypto.Symm.Key? { getKey() }
+    @inlinable public var channel: (any Channel)? { getChannel() }
+    
+    @usableFromInline let getFileEventLoop: @Sendable () -> any EventLoop
+    @usableFromInline let getKey: @Sendable () -> Cryptos.Crypto.Symm.Key?
+    @usableFromInline let getChannel: @Sendable () -> (any Channel)?
+    @usableFromInline let removeHTTPHandlers: @Sendable () async -> Result<Void, Failure>
+    @usableFromInline let removeHTTPHandlers2: @Sendable (any EventLoop) -> EventLoopResult<Void, Failure>
+    @usableFromInline let send: @Sendable (_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    
+    @inlinable
+    public init<T>(_ wrapped: T) where T: WhooshingClient, T.Errcase == Errcase {
+        self.getFileEventLoop = { wrapped.fileEventLoop }
+        self.getKey = { wrapped.key }
+        self.getChannel = { wrapped.channel }
+        self.removeHTTPHandlers = { await wrapped.removeHTTPHandlers() }
+        self.removeHTTPHandlers2 = { wrapped.removeHTTPHandlers(in: $0) }
+        self.send = { wrapped.send($0) }
+    }
+    
+    @inlinable
+    public func removeHTTPHandlers() async -> Result<Void, Failure> {
+        await removeHTTPHandlers()
+    }
+    
+    @inlinable
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
+        removeHTTPHandlers2(eventLoop)
+    }
+    
+    @inlinable
+    public func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure> {
+        send(request)
     }
 }
