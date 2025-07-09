@@ -68,6 +68,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     ///
     /// - Warning: 你永远不应当调用该方法
     @inlinable
+    @Sendable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
         eventLoop.makeSucceededVoidResult()
     }
@@ -76,6 +77,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     ///
     /// - Warning: 你永远不应当调用该方法
     @inlinable
+    @Sendable
     public func removeHTTPHandlers() async -> Res<Void, Errcase> { return .success(()) }
 }
 

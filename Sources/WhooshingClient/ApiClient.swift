@@ -75,12 +75,14 @@ public final class ApiClient: Sendable {
 /// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
     @inlinable
+    @Sendable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
         self.client.removeHTTPHandlers(in: eventLoop)
             .errCast(Errcase.tcpHandlerRemoveFailed)
     }
     
     @inlinable
+    @Sendable
     public func removeHTTPHandlers() async -> Result<Void, Failure> {
         await self.client.removeHTTPHandlers().mapError(as: Errcase.tcpHandlerRemoveFailed)
     }
