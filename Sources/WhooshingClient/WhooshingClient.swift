@@ -202,13 +202,13 @@ public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where 
     @usableFromInline let send: @Sendable (_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
     
     @inlinable
-    public init<T>(_ wrapped: T) where T: WhooshingClient, T.Errcase == Errcase {
-        self.getFileEventLoop = { [wrapped] in wrapped.fileEventLoop }
-        self.getKey = { [wrapped] in wrapped.key }
-        self.getChannel = { [wrapped] in wrapped.channel }
-        self.removeHTTPHandlers = { [wrapped] in await wrapped.removeHTTPHandlers() }
-        self.removeHTTPHandlers2 = { [wrapped] in wrapped.removeHTTPHandlers(in: $0) }
-        self.send = { [wrapped] in wrapped.send($0) }
+    public init<T>(_ wrapped: T) where T: WhooshingClient & Sendable, T.Errcase == Errcase {
+        self.getFileEventLoop = { wrapped.fileEventLoop }
+        self.getKey = { wrapped.key }
+        self.getChannel = { wrapped.channel }
+        self.removeHTTPHandlers = { await wrapped.removeHTTPHandlers() }
+        self.removeHTTPHandlers2 = { wrapped.removeHTTPHandlers(in: $0) }
+        self.send = { wrapped.send($0) }
     }
     
     @inlinable
