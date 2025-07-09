@@ -1,10 +1,12 @@
 import Foundation
 import NIOHTTP1
+import ErrorHandle
 
 #if os(Linux)
 import FoundationNetworking
 #endif
 
+@frozen
 public struct Curl {
     
     #if !canImport(Darwin) || os(macOS)
@@ -15,22 +17,23 @@ public struct Curl {
     /// 若无法连接，则返回 curl 错误，见 ``Curl.Err``
     ///
     /// Unix 命令行仅在 linux 或 macOS 受支持
+    @inlinable
     @discardableResult
-    static func isUriConnectable(_ uri: String) async throws -> HTTPResponseStatus {
+    static func isUriConnectable(_ uri: String) async -> Res<HTTPResponseStatus, Curl.Err> {
         let task = Process()
         let pipe = Pipe()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-c", "curl --silent --output /dev/null --write-out '%{http_code}' \"\(uri)\" 2>&1 || exit $?"]
         task.standardOutput = pipe
         task.standardError = pipe
-        do { try task.run() } catch { throw Curl.Err.unknow }
+        do { try task.run() } catch { return .failure(.unknown) }
         task.waitUntilExit()
         guard task.terminationStatus == 0 else {
             let code = Int(task.terminationStatus)
             if let err = Curl.Err(rawValue: code) {
-                throw err
+                return .failure(err)
             } else {
-                throw Curl.Err.nonErrorCode
+                return .failure(.nonErrorCode)
             }
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -38,9 +41,9 @@ public struct Curl {
             let codeStr = String(data: data, encoding: .utf8),
             let code = Int(codeStr)
         else {
-            return .custom(code: 10000, reasonPhrase: "非正常 http 响应")
+            return .success(.custom(code: 10000, reasonPhrase: "非正常 http 响应"))
         }
-        return HTTPResponseStatus(statusCode: code)
+        return .success(HTTPResponseStatus(statusCode: code))
     }
     
     #else
@@ -51,21 +54,32 @@ public struct Curl {
     /// 若无法连接，则返回 URLError 错误，见 ``URLError``
     ///
     /// IOS 支持
+    @inlinable
     @discardableResult
-    static func isUriConnectable(_ uri: String) async throws -> HTTPResponseStatus {
-        guard let url = URL(string: uri) else { throw URLError(.badURL) }
-        let req = URLRequest(url: url)
-        guard let res = try await URLSession.shared.data(for: req).1 as? HTTPURLResponse else {
-            throw URLError(.unknown)
+    static func isUriConnectable(_ uri: String) async -> Res<HTTPResponseStatus, Curl.Err> {
+        guard let url = URL(string: uri) else {
+            return .failure(.urlMalformat)
         }
-        return .init(statusCode: res.statusCode)
+        let req = URLRequest(url: url)
+
+        return await .async { () throws(Curl.Err.ErrType) in
+            let response = try await required(throws: Curl.Err.readError, "读取数据时出错") {
+                try await URLSession.shared.data(for: req).1
+            }
+            
+            guard let res = response as? HTTPURLResponse else {
+                throw Curl.Err.unknown.d("对方并非支持 HTTP 协议")
+            }
+            return .init(statusCode: res.statusCode)
+        }
     }
     
     #endif
 }
 
 public extension Curl {
-    enum Err: Int, Error {
+    @frozen
+    enum Err: Int, ErrList {
         case ok = 0
         case unsupportedProtocol = 1
         case failedInit = 2
@@ -151,14 +165,16 @@ public extension Curl {
         case sslInvalidCertStatus = 91
         case http2Stream = 92
         case nonErrorCode = 100
-        case unknow = 101
+        case unknown = 101
     }
 }
 
 extension Curl.Err: LocalizedError, CustomStringConvertible {
     
+    @inlinable
     public var description: String { "curl Error \(rawValue): \(errorDescription!)" }
     
+    @inlinable
     public var errorDescription: String? {
         switch self {
         case .ok: return "成功，无错误"
@@ -246,7 +262,7 @@ extension Curl.Err: LocalizedError, CustomStringConvertible {
         case .sslInvalidCertStatus: return "证书状态校验失败"
         case .http2Stream: return "HTTP/2 流错误"
         case .nonErrorCode: return "错误解析失败"
-        case .unknow: return "运行失败"
+        case .unknown: return "运行失败"
         }
     }
 }

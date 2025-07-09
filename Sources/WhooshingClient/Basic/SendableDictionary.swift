@@ -15,32 +15,39 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     public typealias Iterator = Dictionary<Key, Value>.Iterator
 
     /// 当前字典中所有键的集合（线程安全访问）。
+    @inlinable
     public var allKey: [Key: Value].Keys {
         lock.withLock { wrapped.keys }
     }
 
     /// 当前字典中所有值的集合（线程安全访问）。
+    @inlinable
     public var allValue: [Key: Value].Values {
         lock.withLock { wrapped.values }
     }
     
     /// 是否为空
+    @inlinable
     public var isEmpty: Bool {
         lock.withLock { wrapped.isEmpty }
     }
     
     /// 返回当前键值对数量
+    @inlinable
     public var count: Int {
         lock.withLock { wrapped.count }
     }
 
-    private var wrapped: [Key: Value]
-    private let lock = NIOLock()
+    @usableFromInline
+    private(set) var wrapped: [Key: Value]
+    @usableFromInline
+    let lock = NIOLock()
 
     /// 创建一个线程安全字典。
     ///
     /// - Parameters:
     ///   - wrapped: 初始化时的字典内容，默认为空字典。
+    @inlinable
     public init(wrapped: [Key: Value] = [:]) {
         self.wrapped = wrapped
     }
@@ -49,6 +56,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     ///
     /// - Parameter key: 要访问的键。
     /// - Returns: 与该键对应的值，若不存在则为 `nil`。
+    @inlinable
     public subscript(key: Key) -> Value? {
         get { lock.withLock { wrapped[key] } }
         set { lock.withLock { wrapped[key] = newValue } }
@@ -57,6 +65,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     /// 遍历所有键值对，提供线程安全的 `forEach` 实现。
     ///
     /// - Parameter closure: 对每个键值对执行的闭包。
+    @inlinable
     public func forEach(closure: @escaping ((key: Key, value: Value)) -> ()) {
         lock.withLock {
             wrapped.forEach { closure($0) }
@@ -68,6 +77,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     /// for (key, value) in sendableDic {
     ///     .........
     /// }
+    @inlinable
     public func makeIterator() -> Iterator {
         lock.withLock {
             wrapped.makeIterator()
@@ -75,6 +85,7 @@ public final class SendableDictionary<Key, Value>: @unchecked Sendable, Sequence
     }
 
     /// 清空所有的键值对，线程安全
+    @inlinable
     public func removeAll() {
         lock.withLock {
             wrapped.removeAll()

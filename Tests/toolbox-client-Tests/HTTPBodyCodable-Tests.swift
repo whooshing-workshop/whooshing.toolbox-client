@@ -16,8 +16,8 @@ struct HTTPBodyCodableTests {
         let original = "Hello World!"
         let data = original.data(using: .utf8)!
         let body = HTTPBody.data(data)
-        let decodedData: Data = try body.data()
-        let decoded = try String(data: decodedData)
+        let decodedData: Data = try body.data().get()
+        let decoded = try String.make(data: decodedData).get()
         #expect(decoded == original)
         let contentType = try #require(body.headers.first(name: "content-type"))
         #expect(contentType == "application/octet-stream")
@@ -26,8 +26,8 @@ struct HTTPBodyCodableTests {
     @Test("纯文本类型支持编码和解码")
     func testTextEncodeDecode() throws {
         let input = "Hello Testing"
-        let body = try HTTPBody.text(input)
-        let output: String = try body.data()
+        let body = try HTTPBody.text(input).get()
+        let output: String = try body.data().get()
         #expect(output == input)
         let contentType = try #require(body.headers.first(name: "content-type"))
         #expect(contentType == "text/plain")
@@ -36,8 +36,8 @@ struct HTTPBodyCodableTests {
     @Test("JSON 类型支持编码和解码")
     func testJSONEncodeDecode() throws {
         let obj = Example(name: "json", value: 7)
-        let body = try HTTPBody.json(obj)
-        let decoded: Example = try body.json()
+        let body = try HTTPBody.json(obj).get()
+        let decoded: Example = try body.json().get()
         #expect(decoded == obj)
         let contentType = try #require(body.headers.first(name: "content-type"))
         #expect(contentType == "application/json")
@@ -55,7 +55,7 @@ struct HTTPBodyCodableTests {
         }
         let body = HTTPBody.jsonStream(stream)
         var decoded: [Example] = []
-        for try await item in try body.jsonStream(as: Example.self) {
+        for try await item in try body.jsonStream(as: Example.self).get() {
             decoded.append(item)
         }
         #expect(decoded == values)

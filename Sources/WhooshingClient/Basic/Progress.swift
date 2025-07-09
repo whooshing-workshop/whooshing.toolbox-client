@@ -64,17 +64,21 @@ import ErrorHandle
 /// ```
 ///
 /// - Warning: 使用指定 总大小 和 块数 的初始方法被认为是不安全的，见函数 `init(pieces:, bytes:, allowLower:)`
+@frozen
 public struct Progress: Sequence {
     public typealias Element = ProgressContext
     
-    private let chunk: UInt
-    private let total: UInt
+    @usableFromInline
+    let chunk: UInt
+    @usableFromInline
+    let total: UInt
     
     /// 提供 数据块大小 以及 总数据大小 以分配 Progress
     ///
     /// - Parameters:
     ///   - chunk: 数据块的大小，以字节为单位
     ///   - bytes: 总数据的大小
+    @inlinable
     public init(chunk: UInt, bytes: UInt) {
         self.chunk = chunk
         self.total = bytes
@@ -85,6 +89,7 @@ public struct Progress: Sequence {
     /// - Parameters:
     ///   - pieces: 数据块的个数
     ///   - bytes: 数据块的大小，以字节为单位
+    @inlinable
     public init(pieces: UInt, chunk: UInt) {
         self.chunk = chunk
         self.total = pieces * chunk
@@ -107,35 +112,52 @@ public struct Progress: Sequence {
     /// 实际进行的数据块的个数可能 = 所指定的个数 - 1。例如，总大小为 600，
     /// 数据块个数为 7，则数据块将会以每步 100 的大小进行，因此只会进行 6 步。另外，所
     /// 输入的数据块个数不可等于 0。因此使用该函数有一定的风险
-    public init(pieces: UInt, bytes: UInt, allowLower: Bool = false) throws {
-        guard pieces != 0 else { throw Err.inputIllegal.d("不接受 0 个数据块的分割方式") }
+    @inlinable
+    public static func new(pieces: UInt, bytes: UInt, allowLower: Bool = false) -> Res<Self, Errcase> {
+        .init { () throws(Errcase.ErrType) in
+            try Self.init(pieces: pieces, bytes: bytes, allowLower: allowLower)
+        }
+    }
+    
+    @inlinable
+    public init(pieces: UInt, bytes: UInt, allowLower: Bool = false) throws(BscError<Errcase>) {
+        guard pieces != 0 else {
+            throw Errcase.inputIllegal.d("不接受 0 个数据块的分割方式")
+        }
+        
         if bytes % pieces == 0 {
             self.chunk = bytes / pieces
         } else {
             if allowLower == false, bytes % (pieces - 1) == 0{
-                throw Err.pieceFailed.d("预计分片为 \(bytes) 块，但只能分为 \(bytes - 1) 块")
+                throw Errcase.pieceFailed.d("预计分片为 \(bytes) 块，但只能分为 \(bytes - 1) 块")
             }
             self.chunk = bytes / (pieces - 1)
         }
         self.total = bytes
     }
     
-    public enum Err: String, ErrList {
+    @frozen
+    public enum Errcase: String, ErrList {
         public var domain: String { "woo.sys.server.progress.err" }
         case inputIllegal = "输入非法"
         case pieceFailed = "进度分片失败"
     }
 
+    @frozen
     public struct Iterator: IteratorProtocol {
-        private var temp: ProgressContext?
-        private let chunk: Int
+        @usableFromInline
+        private(set) var temp: ProgressContext?
+        @usableFromInline
+        let chunk: Int
 
+        @usableFromInline
         init(chunk: UInt, total: UInt) {
             self.chunk = Int(chunk)
             guard total > 0 else { self.temp = nil; return }
             self.temp = .init(index: 0, bytes: self.chunk, curBytes: self.chunk, totalBytes: Int(total))
         }
 
+        @inlinable
         public mutating func next() -> ProgressContext? {
             guard let current = temp else { return nil }
             if current.done {
@@ -149,6 +171,7 @@ public struct Progress: Sequence {
         }
     }
 
+    @inlinable
     public func makeIterator() -> Iterator {
         Iterator(chunk: chunk, total: total)
     }
@@ -157,29 +180,34 @@ public struct Progress: Sequence {
 /// 一个用于发送和读取异步进度的类，发送方调用 `sendProgress(_:)`，读取方通过 `for await` 获取进度。
 ///
 /// 适用于文件传输、数据处理等异步任务，具备类 `AsyncStream` 的生产者-消费者语义。
-///
-///
 public final class AsyncProgress: AsyncSequence, @unchecked Sendable {
     public typealias Failure = Error
     public typealias AsyncIterator = AsyncMapSequence<Base, ProgressContext>.AsyncIterator
     public typealias Element = ProgressContext
     public typealias Base = AsyncThrowingStream<Int, Error>
     
+    @inlinable
     public var totalBytes: Int? {
         set { lock.withLock { progress = progress.totalBytes(newValue) } }
         get { lock.withLock { progress.totalBytes } }
     }
     
-    private let continuation: Base.Continuation
-    private let stream: Base
-    private var progress: ProgressContext
-    private let lock = NIOLock()
+    @usableFromInline
+    let continuation: Base.Continuation
+    @usableFromInline
+    let stream: Base
+    @usableFromInline
+    private(set) var progress: ProgressContext
+    @usableFromInline
+    let lock = NIOLock()
     
+    @inlinable
     public init() {
         (self.stream, self.continuation) = Base.makeStream()
         progress = .init(index: -1)
     }
     
+    @inlinable
     public convenience init(_ closure: @escaping @Sendable (ProgressContext) -> Void) {
         self.init()
         Task {
@@ -191,15 +219,18 @@ public final class AsyncProgress: AsyncSequence, @unchecked Sendable {
     
     /// 向进度通道发送一条新的进度信息
     /// - Parameter byte: 当前处理的数据大小
+    @inlinable
     public func sendProgress(_ byte: Int) {
         continuation.yield(byte)
     }
 
     /// 标记进度结束，关闭通道
+    @inlinable
     public func finish(throwing error: Error? = nil) {
         continuation.finish(throwing: error)
     }
     
+    @inlinable
     public func makeAsyncIterator() -> AsyncIterator {
         stream.map { curChunk in
             self.progress = self.progress.next(curChunk, done: self.progress.curBytes + curChunk == self.progress.totalBytes)
@@ -212,6 +243,7 @@ public final class AsyncProgress: AsyncSequence, @unchecked Sendable {
 ///
 /// `ProgressContext` 用于追踪任务的当前进度，包括已传输字节数、总字节数、耗时、速度等信息，
 /// 同时携带与该任务相关的通道信息和用户自定义的响应值。
+@frozen
 public struct ProgressContext: Sendable, CustomStringConvertible {
     
     /// 当前任务在整个进度列表中的索引编号（适用于分片或批量任务）。
@@ -232,6 +264,7 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     /// 任务开始的时间。
     public let startDate: Date
     
+    @inlinable
     public init(index: Int = 0, done: Bool = false, bytes: Int = 0, curBytes: Int = 0, totalBytes: Int? = nil, startDate: Date = Date()) {
         self.index = index
         self.done = done
@@ -242,6 +275,7 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     }
 
     /// 当前字节传输进度（0~1），如果 `totalBytes` 未知或为 0，则为 `nil`。
+    @inlinable
     public var bytesPersentage: Double? {
         if let tb = totalBytes, tb > 0 {
             return Double(curBytes) / Double(tb)
@@ -250,21 +284,25 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     }
 
     /// 格式化的字节传输百分比字符串（例如 "68.2%"），如果无法计算则返回 `"~%"`。
+    @inlinable
     public var bytesPersentageStr: String {
         (bytesPersentage == nil ? "~" : String(Float(Int(bytesPersentage! * 100 * 100) / 100))) + "%"
     }
 
     /// 格式化的总字节数字符串（例如 "12.3 MB"），如果未知则返回 `"~B"`。
+    @inlinable
     public var totalBytesStr: String {
         totalBytes == nil ? "~B" : ChunkTool.formatByteSize(totalBytes!)
     }
 
     /// 格式化的当前字节数字符串（例如 "3.5 MB"）。
+    @inlinable
     public var curBytesStr: String {
         ChunkTool.formatByteSize(curBytes)
     }
 
     /// 当前的传输速度（字节每秒），如果耗时为 0 则为 `nil`。
+    @inlinable
     public var speed: Double? {
         let timeCost = Double(timeCost)
         if timeCost > 0 {
@@ -275,6 +313,7 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     }
 
     /// 格式化的传输速度字符串（例如 "1.2MB/s"），如果无法计算则返回 `"~B/s"`。
+    @inlinable
     public var speedStr: String {
         if let speed = self.speed {
             return ChunkTool.formatByteSize(.init(speed)) + "/s"
@@ -284,27 +323,33 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     }
 
     /// 当前任务已耗费的时间字符串（单位：秒）。
+    @inlinable
     public var timeCost: TimeInterval {
         Date().timeIntervalSince(startDate)
     }
     
+    @inlinable
     public var timeCostStr: String {
         String(format: "%.6fs", self.timeCost)
     }
 
     /// 返回当前进度上下文的字符串描述，方便调试和日志记录。
+    @inlinable
     public var description: String {
         "Progress(\(index), 字节进度: \(bytesPersentageStr) [\(curBytesStr)(\(curBytes))-\(totalBytesStr)(\(totalBytes == nil ? "~" : String(totalBytes!)))], 大小: \(bytes), 完成: \(done), 耗时: \(timeCostStr), 速度: \(speedStr))"
     }
     
+    @inlinable
     public func totalBytes(_ totalBytes: Int?) -> Self{
         ProgressContext(index: index, done: done, bytes: bytes, curBytes: curBytes, totalBytes: totalBytes, startDate: startDate)
     }
     
+    @inlinable
     public func done(_ done: Bool) -> Self{
         ProgressContext(index: index, done: done, bytes: bytes, curBytes: curBytes, totalBytes: totalBytes, startDate: startDate)
     }
     
+    @inlinable
     public func next(_ dataSize: Int, done: Bool = false) -> Self {
         .init(index: index + 1, done: done, bytes: dataSize, curBytes: curBytes + dataSize, totalBytes: totalBytes, startDate: startDate)
     }

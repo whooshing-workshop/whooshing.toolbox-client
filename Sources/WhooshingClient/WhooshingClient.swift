@@ -1,6 +1,8 @@
 import Cryptos
 import NIOCore
 import NIOHTTP1
+import NIOAdvanced
+import ErrorHandle
 
 /// `WhooshingClient` 是一个通用的 HTTP 客户端协议，
 /// 定义了发送各种 HTTP 请求的方法，包括 GET、POST、PUT、PATCH、DELETE 和自定义方法。
@@ -53,14 +55,17 @@ import NIOHTTP1
 ///
 /// 该协议也支持通过 `HTTPRequest` 类型直接发送构造好的请求对象。
 ///
-public protocol WhooshingClient: AnyObject,Sendable {
+public protocol WhooshingClient: AnyObject, Sendable {
+    
+    associatedtype Errcase: ErrList
+    typealias Failure = Errcase.ErrType
     
     /// 用于文件操作的EventLoop
     var fileEventLoop: EventLoop { get }
     var key: Crypto.Symm.Key? { get }
     var channel: (any Channel)? { get }
-    func removeHTTPHandlers() async throws
-    func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void>
+    func removeHTTPHandlers() async -> Result<Void, Failure>
+    func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure>
     
     // MARK: - 核心实现
     
@@ -71,7 +76,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func get(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func get(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 POST 请求。
     ///
@@ -80,7 +85,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func post(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func post(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 PATCH 请求。
     ///
@@ -89,7 +94,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func patch(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func patch(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 PUT 请求。
     ///
@@ -98,7 +103,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func put(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func put(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 DELETE 请求。
     ///
@@ -107,7 +112,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func delete(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func delete(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个自定义方法的 HTTP 请求。
     ///
@@ -117,63 +122,107 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func send(_ method: HTTPMethod, to url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopFuture<HTTPResponse>
+    func send(_ method: HTTPMethod, to url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
 
     /// 发送一个自定义 `HTTPRequest`。
     ///
     /// - Parameter request: 要发送的请求对象。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func send(_ request: HTTPRequest) -> EventLoopFuture<HTTPResponse>
+    func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
 }
 
 public extension WhooshingClient {
+    @inlinable
     func get(
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         send(.GET, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func post(
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         send(.POST, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func patch(
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         send(.PATCH, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func put(
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         send(.PUT, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func delete(
         _ url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         send(.DELETE, to: url, body: body, headers: headers)
     }
     
+    @inlinable
     func send(
         _ method: HTTPMethod,
         to url: WebURI,
         body: HTTPBody? = nil,
         headers: HTTPHeaders = [:]
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         let request = HTTPRequest(method: method, url: url, headers: headers, body: body)
         return send(request)
+    }
+}
+
+public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where Errcase: ErrList {
+    @inlinable public var fileEventLoop: any EventLoop { getFileEventLoop() }
+    @inlinable public var key: Cryptos.Crypto.Symm.Key? { getKey() }
+    @inlinable public var channel: (any Channel)? { getChannel() }
+    
+    @usableFromInline let getFileEventLoop: @Sendable () -> any EventLoop
+    @usableFromInline let getKey: @Sendable () -> Cryptos.Crypto.Symm.Key?
+    @usableFromInline let getChannel: @Sendable () -> (any Channel)?
+    @usableFromInline let removeHTTPHandlers: @Sendable () async -> Result<Void, Failure>
+    @usableFromInline let removeHTTPHandlers2: @Sendable (any EventLoop) -> EventLoopResult<Void, Failure>
+    @usableFromInline let send: @Sendable (_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    
+    @inlinable
+    public init<T>(_ wrapped: T) where T: WhooshingClient & Sendable, T.Errcase == Errcase {
+        self.getFileEventLoop = { @Sendable in wrapped.fileEventLoop }
+        self.getKey = { @Sendable in wrapped.key }
+        self.getChannel = { @Sendable in wrapped.channel }
+        self.removeHTTPHandlers = { @Sendable in await wrapped.removeHTTPHandlers() }
+        self.removeHTTPHandlers2 = { @Sendable in wrapped.removeHTTPHandlers(in: $0) }
+        self.send = { @Sendable in wrapped.send($0) }
+    }
+    
+    @inlinable
+    public func removeHTTPHandlers() async -> Result<Void, Failure> {
+        await removeHTTPHandlers()
+    }
+    
+    @inlinable
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
+        removeHTTPHandlers2(eventLoop)
+    }
+    
+    @inlinable
+    public func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure> {
+        send(request)
     }
 }

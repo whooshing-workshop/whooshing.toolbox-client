@@ -2,6 +2,7 @@ import Cryptos
 import ErrorHandle
 import NIOConcurrencyHelpers
 import NIO
+import NIOAdvanced
 import Logging
 import NIOHTTP1
 import AsyncHTTPClient
@@ -17,6 +18,7 @@ import AsyncHTTPClient
 /// ，使用 HTTP 即可。
 public final class ApiClient: Sendable {
     
+    @inlinable
     public var key: Crypto.Symm.Key? {
         guard
             let ioData = client.storage[API.RequestIOData.self],
@@ -27,14 +29,19 @@ public final class ApiClient: Sendable {
     }
     
     /// 当前正在进行的请求所在的 TCP NIO Channel
+    @inlinable
     public weak var channel: (any Channel)? { client.channel }
     /// 日志系统
+    @inlinable
     public var logger: Logger? { client.logger }
     /// 主要的 EventLoop
+    @inlinable
     public var eventLoop: EventLoop { client.eventLoop }
     
-    private let client: APIReqClient
-    private let allocator = ByteBufferAllocator()
+    @usableFromInline
+    let client: APIReqClient
+    @usableFromInline
+    let allocator = ByteBufferAllocator()
     
     /// 使用指定的事件循环和日志器初始化 API 客户端。
     ///
@@ -44,24 +51,19 @@ public final class ApiClient: Sendable {
     ///   - token: 用户令牌（Base64 编码的字符串）。
     ///   - eventLoop: 所属的事件循环，用于异步操作。
     ///   - logger: 可选的日志记录器，默认值为 `nil`。
+    @inlinable
     public init(credential: String, token: String, eventLoop: EventLoop, logger: Logger? = nil) {
         self.client = .new(eventLoop: eventLoop, logger: logger, byteBufferAllocator: allocator)
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
     }
     
-    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopFuture<Void> {
-        self.client.removeHTTPHandlers(in: eventLoop)
-    }
-    
-    public func removeHTTPHandlers() async throws {
-        try await self.client.removeHTTPHandlers()
-    }
-    
     /// 关闭所有正在进行的连线
+    @inlinable
     public func closeAll() async {
         await client.closeAll()
     }
 
+    @inlinable
     deinit {
         client.logger?.debug("API.Client-主动关闭连接")
         Task { [weak client] in
@@ -72,11 +74,24 @@ public final class ApiClient: Sendable {
 
 /// 实现 WhooshingClient 协议，以继承其默认实现
 extension ApiClient: WhooshingClient {
+    @inlinable
+    public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
+        self.client.removeHTTPHandlers(in: eventLoop)
+            .errCast(Errcase.tcpHandlerRemoveFailed)
+    }
+    
+    @inlinable
+    public func removeHTTPHandlers() async -> Result<Void, Failure> {
+        await self.client.removeHTTPHandlers().mapError(as: Errcase.tcpHandlerRemoveFailed)
+    }
+    
+    @inlinable
     public func send(
         _ request: HTTPRequest
-    ) -> EventLoopFuture<HTTPResponse> {
+    ) -> EventLoopResult<HTTPResponse, Failure> {
         client.send(request)
     }
 
+    @inlinable
     public var fileEventLoop: any EventLoop { client.fileEventLoop }
 }

@@ -2,7 +2,8 @@
 /// 支持以类型为键进行数据存取，常用于跨类型安全共享数据。
 public final class SendableStorage: Sendable {
     /// 内部存储字典，使用类型标识符作为键，值为 Sendable 协议的实例。
-    private let storage: SendableDictionary<ObjectIdentifier, Sendable> = .init()
+    @usableFromInline
+    let storage: SendableDictionary<ObjectIdentifier, Sendable> = .init()
     
     public protocol Key {
         associatedtype Value: Sendable
@@ -12,6 +13,7 @@ public final class SendableStorage: Sendable {
     ///
     /// - Parameter key: 遵循 `StorageKey` 协议的类型，用作键。
     /// - Returns: 对应类型的值，如果未设置则为 nil。
+    @inlinable
     public subscript<T: Key>(key: T.Type) -> T.Value? {
         get {
             guard let value = storage[ObjectIdentifier(T.self)] as? T.Value else {

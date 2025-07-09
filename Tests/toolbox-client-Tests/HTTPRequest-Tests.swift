@@ -28,7 +28,7 @@ struct HTTPRequestTests {
         #expect(request.url.path == "/api")
         #expect(request.version.major == 1)
         #expect(request.headers["X-Test"] == ["true"])
-        #expect(try request.body?.bytes().readableBytes == 5)
+        #expect(try request.body?.bytes().get().readableBytes == 5)
     }
 
     @Test("描述字符串输出")
@@ -48,7 +48,7 @@ struct HTTPRequestTests {
         buffer.writeString("abc123")
         let request = HTTPRequest(method: .PATCH, url: WebURI(stringLiteral: "https://localhost/patch"), body: .bytes(buffer))
         let headerBuffer = request.headData(allocator: .init())
-        let bodyBuffer = try request.body?.bytes()
+        let bodyBuffer = try request.body?.bytes().get()
         let headerStr = headerBuffer.getString(at: 0, length: headerBuffer.readableBytes) ?? ""
         #expect(headerStr.contains("PATCH /patch HTTP/1.1"))
         #expect(headerStr.lowercased().contains("content-length"))

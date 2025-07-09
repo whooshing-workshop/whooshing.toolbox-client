@@ -12,8 +12,8 @@ final class RequestBackPressureHandler: ChannelDuplexHandler, @unchecked Sendabl
         set { lock.withLock { __keepRead = newValue } }
     }
     
-    private let lock = NIOLock()
-    private var __keepRead = true
+    let lock = NIOLock()
+    private(set) var __keepRead = true
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         context.fireChannelRead(data)
@@ -34,4 +34,6 @@ final class RequestBackPressureHandler: ChannelDuplexHandler, @unchecked Sendabl
         }
         promise?.succeed()
     }
+    
+    init() {}
 }

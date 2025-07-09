@@ -29,7 +29,7 @@ struct HTTPResponseTests {
         #expect(response.version.major == 1)
         #expect(response.status == .ok)
         #expect(response.headers.contains(name: "content-type"))
-        #expect(try response.body?.bytes().readableBytes == 5)
+        #expect(try response.body?.bytes().get().readableBytes == 5)
     }
 
     @Test("description 输出应包含头部和主体")
