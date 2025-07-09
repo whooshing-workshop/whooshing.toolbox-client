@@ -55,7 +55,7 @@ import ErrorHandle
 ///
 /// 该协议也支持通过 `HTTPRequest` 类型直接发送构造好的请求对象。
 ///
-public protocol WhooshingClient: AnyObject,Sendable {
+public protocol WhooshingClient: AnyObject, Sendable {
     
     associatedtype Errcase: ErrList
     typealias Failure = Errcase.ErrType
@@ -203,12 +203,12 @@ public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where 
     
     @inlinable
     public init<T>(_ wrapped: T) where T: WhooshingClient & Sendable, T.Errcase == Errcase {
-        self.getFileEventLoop = { wrapped.fileEventLoop }
-        self.getKey = { wrapped.key }
-        self.getChannel = { wrapped.channel }
-        self.removeHTTPHandlers = { await wrapped.removeHTTPHandlers() }
-        self.removeHTTPHandlers2 = { wrapped.removeHTTPHandlers(in: $0) }
-        self.send = { wrapped.send($0) }
+        self.getFileEventLoop = { @Sendable in wrapped.fileEventLoop }
+        self.getKey = { @Sendable in wrapped.key }
+        self.getChannel = { @Sendable in wrapped.channel }
+        self.removeHTTPHandlers = { @Sendable in await wrapped.removeHTTPHandlers() }
+        self.removeHTTPHandlers2 = { @Sendable in wrapped.removeHTTPHandlers(in: $0) }
+        self.send = { @Sendable in wrapped.send($0) }
     }
     
     @inlinable
