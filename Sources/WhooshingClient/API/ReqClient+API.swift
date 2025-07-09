@@ -77,7 +77,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         domain: String?,
         channel: Channel
     ) -> EventLoopResult<Void, Failure> {
-        channel.eventLoop.makeResultWithTask { () throws(Failure) in
+        channel.eventLoop.submitResult { () throws(Failure) in
             guard let ioData = self.apiRequestIoData else {
                 throw Errcase.internalFailure.d("apiRequestIoData 参数未找到")
             }

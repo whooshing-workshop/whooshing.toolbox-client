@@ -59,6 +59,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     
     @frozen
     public enum Errcase: String, ErrList {
+        case upstreamFailure = "上游错误"
         case internalFailure = "内部错误"
     }
 
@@ -72,8 +73,10 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         let buffer = unwrapOutboundIn(data)
         ioHandler.get(data: buffer, context: context).whenComplete { res in
             switch res {
-            case .success(let response): context.fireChannelRead(self.wrapOutboundOut(response))
-            case .failure(let err): self.errorHappend(context: context, error: Errcase.internalFailure.subErr(err))
+            case .success(let response):
+                context.fireChannelRead(self.wrapOutboundOut(response))
+            case .failure(let err):
+                self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
             }
         }
     }
@@ -99,19 +102,23 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     func channelRegistered(context: ChannelHandlerContext) {
         context.fireChannelRegistered()
         ioHandler.connectionStart(context: context).whenFailure { err in
-            self.errorHappend(context: context, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
         }
     }
     
     func channelUnregistered(context: ChannelHandlerContext) {
         context.fireChannelUnregistered()
         ioHandler.connectionEnd(context: context).whenFailure { err in
-            self.errorHappend(context: context, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
         }
     }
     
-    func errorHappend(context: ChannelHandlerContext, error: Errcase.ErrType) {
-        logger?.warning("\(error)")
-        context.fireErrorCaught(error)
+    func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        if let err = error as? Errcase.ErrType {
+            context.fireErrorCaught(err)
+        } else {
+            let err = Errcase.upstreamFailure.subErr(error)
+            context.fireErrorCaught(err)
+        }
     }
 }

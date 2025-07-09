@@ -151,19 +151,22 @@ extension ReqClient {
     }
     
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
-        eventLoop.makeResultWithTask {  () throws(BscError<Errcase>) in
+        eventLoop.makeResultWithTask { () throws(BscError<Errcase>) in
             try await self.removeHTTPHandlers().get()
         }
     }
     
     public func removeHTTPHandlers() async -> Res<Void, Errcase> {
-        await .async { () throws(Errcase.ErrType) in
-            guard let channel = self.channel else { return }
-            for name in self.removableHandlerNames {
+        guard let channel = self.channel else { return .success(()) }
+        for name in self.removableHandlerNames {
+            do {
                 try await required(throws: Errcase.tcpHandlerRemoveFailed) {
                     try await channel.pipeline.removeHandler(name: name)
                 }
+            } catch {
+                return .failure(error)
             }
         }
+        return .success(())
     }
 }

@@ -18,28 +18,21 @@ extension APIReqClient {
 enum API {
     @frozen
     public enum Errcase: String, ErrList {
-        case requestEncryptFailed = "请求数据加密时失败"
-        case responseDecryptFailed = "响应数据解密时失败"
+        case requestEncryptFailed = "请求数据加密失败"
+        case responseDecryptFailed = "响应数据解密失败"
         case responseParseErrorFailed = "从响应数据解析错误信息时失败"
         case parseResponseFailed = "解析响应数据时失败"
-        
         case internalFailure = "内部错误"
     }
     
     @usableFromInline
     final class RequestIOData: SendableStorage.Key, Sendable {
-        @usableFromInline
-        typealias Value = RequestIOData
-        @usableFromInline
-        let credential: String
-        @usableFromInline
-        let token: String
-        @usableFromInline
-        let connectionKeys: SendableDictionary<ObjectIdentifier, Crypto.Symm.Key> = .init()
-        @usableFromInline
-        let readingBufferDatas: SendableDictionary<ObjectIdentifier, ByteBuffer> = .init()
-        @usableFromInline
-        let errorTemps: SendableDictionary<ObjectIdentifier, HTTPResponseStatus> = .init()
+        @usableFromInline typealias Value = RequestIOData
+        @usableFromInline let credential: String
+        @usableFromInline let token: String
+        @usableFromInline let connectionKeys: SendableDictionary<ObjectIdentifier, Crypto.Symm.Key> = .init()
+        @usableFromInline let readingBufferDatas: SendableDictionary<ObjectIdentifier, ByteBuffer> = .init()
+        @usableFromInline let errorTemps: SendableDictionary<ObjectIdentifier, Bool> = .init()
         
         @usableFromInline
         init(credential: String, token: String) {
@@ -92,16 +85,16 @@ enum API {
                 return context.eventLoop.makeFailedResult(err)
             }
         }
-
-        /// 收到响应时，进行解密并解码
+        
         @usableFromInline
         func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+            let id = ObjectIdentifier(context.channel)
+            let channel = context.channel
+            
             guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
-            let id = ObjectIdentifier(context.channel)
-
+            
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
-
             if let _ = ioData.errorTemps[id] {
                 // 如果错误已经存在了，则直接报错
                 let err = parseError(body: data)
@@ -109,14 +102,14 @@ enum API {
                 return context.eventLoop.makeFailedResult(err)
             } else {
                 // 错误不存在，从对方的相应中尝试解析出错误
-                if let status = lightweightParseHTTP1StatusCode(from: data) {
-                    ioData.errorTemps[id] = status
+                if lightweightParseHTTP1StatusCode(from: data) {
+                    ioData.errorTemps[id] = true
                     return context.eventLoop.makeSucceededResult(data)
                 }
             }
-            
-            return context.eventLoop.makeResultWithTask { () throws(Errcase.ErrType) in
-                logger?.trace("API.Client.HTTP-收到响应，进行解密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
+                
+            do {
+                logger?.trace("API.Client.HTTP-收到响应，进行解密(key: \(ioData.connectionKeys[id] != nil)) in \(channel.clientAddrInfo)")
                 var plain: ByteBuffer
                 if let key = ioData.connectionKeys[id] {
                     plain = try required(throws: Errcase.responseDecryptFailed) {
@@ -131,7 +124,11 @@ enum API {
                         try Crypto.Symm.decrypt(.init(buffer: data), key: tokenKey).get()
                     }
                 }
-                return plain
+                return context.eventLoop.makeSucceededResult(plain)
+            } catch let error as Errcase.ErrType {
+                return context.eventLoop.makeFailedResult(error)
+            } catch {
+                return context.eventLoop.makeFailedResult(Errcase.internalFailure.subErr(error))
             }
         }
         
@@ -191,28 +188,20 @@ enum API {
             }
         }
         
-        func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> HTTPResponseStatus? {
-            // 确保至少有 "HTTP/1.1 200" 这段内容（12 字节）
-            guard buffer.readableBytes >= 12 else {
-                return nil
+        func lightweightParseHTTP1StatusCode(from buffer: ByteBuffer) -> Bool {
+            // 确保至少有 "HTTP" 这段内容（4 字节）
+            guard buffer.readableBytes > 4 else {
+                return false
             }
 
-            // 获取前 9 个字节，应该是 "HTTP/1.1 "
-            let expectedPrefix = "HTTP/1.1 "
-            let prefixBytes = buffer.getBytes(at: buffer.readerIndex, length: 9)
+            // 获取前 4 个字节，应该是 "HTTP"
+            let expectedPrefix: [UInt8] = [0x48, 0x54, 0x54, 0x50] // "HTTP" in ASCII
 
-            guard let actual = prefixBytes, actual == Array(expectedPrefix.utf8) else { return nil }
-
-            // 接下来是状态码 3 字节
-            let statusStart = buffer.readerIndex + 9
-            guard
-                let codeStr = buffer.getString(at: statusStart, length: 3),
-                let code = Int(codeStr)
-            else {
-                return nil
+            if let view = buffer.getBytes(at: buffer.readerIndex, length: 4) {
+                return view.elementsEqual(expectedPrefix)
+            } else {
+                return false
             }
-
-            return .init(statusCode: code)
         }
     }
 }

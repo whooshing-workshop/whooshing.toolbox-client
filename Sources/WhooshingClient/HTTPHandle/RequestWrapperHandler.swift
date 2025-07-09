@@ -1,6 +1,7 @@
 import NIOCore
-import AsyncAlgorithms
 import NIOHTTP1
+import NIOConcurrencyHelpers
+import AsyncAlgorithms
 import AsyncHTTPClient
 import Logging
 import NIOAdvanced
@@ -20,6 +21,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
     public enum Errcase: String, ErrList {
         case responseNotValid = "对方的响应不合法"
         case cancelled = "外部错误，被取消"
+        case upstreamFailure = "上游处理器发生错误"
         case internalFailure = "内部错误"
     }
     
@@ -51,19 +53,11 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
         guard let promise = promise else { fatalError("未指定 promise") }
         
         let part = unwrapInboundIn(data)
-        do {
-            let res: InboundOut?
-            
-            switch part {
-            case .head(let head): res = try readHead(context: context, head: head)
-            case .body(let body): try readBody(context: context, body: body); res = nil
-            case .end: res = try readEnd(context: context)
-            }
-            
-            if let r = res { promise.succeed(r) }
-        } catch {
-            promise.fail(error)
-            context.fireErrorCaught(error)
+        
+        switch part {
+        case .head(let head): readHead(context: context, head: head, promise: promise)
+        case .body(let body): readBody(context: context, body: body, promise: promise)
+        case .end: readEnd(context: context, promise: promise)
         }
     }
     
@@ -91,8 +85,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
                         }.get()
                     } catch {
                         try? await context.eventLoop.submit {
-                            promise?.fail(Errcase.internalFailure.subErr(error))
-                            context.fireErrorCaught(error)
+                            self.errorCaught(context: context, error: Errcase.internalFailure.subErr(error))
                         }.get()
                     }
                 }
@@ -101,44 +94,69 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
             context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: promise)
         }
     }
+    
+    public func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        logger?.warning("\(error)")
+        if let err = error as? Errcase.ErrType {
+            promise?.fail(err)
+            context.fireErrorCaught(err)
+        } else {
+            let err = Errcase.upstreamFailure.subErr(error)
+            promise?.fail(err)
+            context.fireErrorCaught(err)
+        }
+    }
 }
 
 extension RequestWrapperHandler {
-    func readHead(context: ChannelHandlerContext, head: HTTPResponseHead) throws(BscError<Errcase>) -> InboundOut? {
+    func readHead(
+        context: ChannelHandlerContext,
+        head: HTTPResponseHead,
+        promise: EventLoopTarget<InboundOut, Errcase.ErrType>
+    ) {
         var res = HTTPResponse(status: head.status, version: head.version, headers: head.headers)
         res.channel = context.channel
         // websocket
         guard head.status != .switchingProtocols else {
-            return res
+            promise.succeed(res)
+            return
         }
         for h in head.headers {
-            if h.name == "content-length" {
+            if h.name.lowercased() == "content-length" {
                 guard let bodySize = Int(h.value) else {
-                    throw Errcase.responseNotValid.d("content-type 头大小解析失败")
+                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("content-type 头大小解析失败"))
+                    return
                 }
                 self.currentStrategy = .bytes(bodySize)
                 self.currentResponse = res
-                return nil
-            } else if h.name == "transfer-encoding" && h.value.lowercased() == "chunked" {
+                return
+            } else if h.name.lowercased() == "transfer-encoding" && h.value.lowercased() == "chunked" {
                 let stream = AsyncThrowingChannel<ByteBuffer, Error>()
                 res.body = .stream(stream)
                 let sendGroup = SendTaskGroup()
                 self.currentStrategy = .stream(sendGroup, stream)
-                return res
+                promise.succeed(res)
+                return
             }
         }
-        throw Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头")
+        self.errorCaught(context: context, error: Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头"))
     }
     
-    func readBody(context: ChannelHandlerContext, body: ByteBuffer) throws(BscError<Errcase>) {
+    func readBody(
+        context: ChannelHandlerContext,
+        body: ByteBuffer,
+        promise: EventLoopTarget<InboundOut, Errcase.ErrType>
+    ) {
         guard let strategy = self.currentStrategy else {
-            throw Errcase.internalFailure.d("机制错误，strategy 未指定")
+            promise.fail(Errcase.internalFailure.d("机制错误，strategy 未指定"))
+            return
         }
         
         switch strategy {
         case .bytes(let totalSize):
             guard let res = self.currentResponse else {
-                throw Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头")
+                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头"))
+                return
             }
             
             guard totalSize > 0 else {
@@ -148,13 +166,14 @@ extension RequestWrapperHandler {
             
             if let resBody = res.body {
                 guard case var .bytes(buffer) = resBody.type else {
-                    throw Errcase.internalFailure.d("机制错误，此处的 Response body 应当为 byte")
+                    self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处的 Response body 应当为 byte"))
+                    return
                 }
                 
                 buffer.writeImmutableBuffer(body)
                 
                 if buffer.readableBytes > totalSize {
-                    throw Errcase.responseNotValid.d("预计大小为 \(ChunkTool.formatByteSize(totalSize))，总共收到 \(ChunkTool.formatByteSize(buffer.readableBytes))")
+                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("预计大小为 \(ChunkTool.formatByteSize(totalSize))，总共收到 \(ChunkTool.formatByteSize(buffer.readableBytes))"))
                 }
                 
                 self.currentResponse?.body = .bytes(buffer)
@@ -164,64 +183,71 @@ extension RequestWrapperHandler {
             
             context.triggerUserOutboundEvent(ReadingStatus.resume, promise: nil)
         case .stream(let sendGroup, let writer):
-            
             context.triggerUserOutboundEvent(ReadingStatus.pause, promise: nil)
-            
-            Task {
-                await sendGroup.add {
-                    await writer.send(body)
-                    try? await context.eventLoop.submit {
-                        context.triggerUserOutboundEvent(ReadingStatus.resume, promise: nil)
-                    }.get()
-                }
+            sendGroup.add {
+                await writer.send(body)
+                try? await context.eventLoop.submit {
+                    context.triggerUserOutboundEvent(ReadingStatus.resume, promise: nil)
+                }.get()
             }
         }
     }
     
-    func readEnd(context: ChannelHandlerContext) throws(BscError<Errcase>) -> InboundOut? {
+    func readEnd(
+        context: ChannelHandlerContext,
+        promise: EventLoopTarget<InboundOut, Errcase.ErrType>
+    ) {
         guard let strategy = self.currentStrategy else {
-            throw Errcase.internalFailure.d("机制错误，strategy 未指定")
+            self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，strategy 未指定"))
+            return
         }
         
         switch strategy {
         case .bytes:
             guard let res = self.currentResponse else {
-                throw Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头")
+                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头"))
+                return
             }
-            return res
-            
+            promise.succeed(res)
         case .stream(let sendGroup, let writer):
             context.triggerUserOutboundEvent(ReadingStatus.pause, promise: nil)
             Task {
                 await sendGroup.waitAll()
                 writer.finish()
             }
-            return nil
         }
     }
 }
 
-@usableFromInline
-actor SendTaskGroup {
-    @usableFromInline
-    private(set) var tasks: [Task<Void, Never>] = []
+final class SendTaskGroup: @unchecked Sendable {
+    
+    let lock = NIOLock()
+    
+    var tasks: [Task<Void, Never>] {
+        get {
+            lock.withLock {
+                __tasks
+            }
+        }
+        set {
+            lock.withLock {
+                __tasks = newValue
+            }
+        }
+    }
+    
+    private var __tasks: [Task<Void, Never>] = []
 
-    @inlinable
     func add(_ operation: @escaping @Sendable () async -> Void) {
         tasks.append(Task {
             await operation()
-            self.tasks.removeFirst()
         })
     }
 
-    @inlinable
     func waitAll() async {
         for t in tasks {
             await t.value
         }
         tasks.removeAll()
     }
-    
-    @inlinable
-    init() {}
 }
