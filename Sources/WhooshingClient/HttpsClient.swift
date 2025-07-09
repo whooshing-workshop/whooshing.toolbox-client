@@ -46,6 +46,7 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// - Returns: 一个 `EventLoopResult`，其结果为 `HTTPResponse`。
     /// - Throws: 若响应不合法或连接失败，抛出 `HttpsClient.Errcase` 中定义的错误。
     @inlinable
+    @Sendable
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {

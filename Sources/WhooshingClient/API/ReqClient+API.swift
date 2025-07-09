@@ -25,6 +25,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
     }
     
     @inlinable
+    @Sendable
     func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {

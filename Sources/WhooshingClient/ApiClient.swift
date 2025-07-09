@@ -86,6 +86,7 @@ extension ApiClient: WhooshingClient {
     }
     
     @inlinable
+    @Sendable
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {

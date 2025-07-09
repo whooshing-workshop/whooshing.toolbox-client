@@ -76,7 +76,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func get(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func get(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 POST 请求。
     ///
@@ -85,7 +85,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func post(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func post(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 PATCH 请求。
     ///
@@ -94,7 +94,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func patch(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func patch(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 PUT 请求。
     ///
@@ -103,7 +103,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func put(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func put(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个 DELETE 请求。
     ///
@@ -112,7 +112,7 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func delete(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func delete(_ url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
     
     /// 发送一个自定义方法的 HTTP 请求。
     ///
@@ -122,17 +122,18 @@ public protocol WhooshingClient: AnyObject,Sendable {
     ///   - body: 可选的请求体。
     ///   - headers: HTTP 请求头。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func send(_ method: HTTPMethod, to url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func send(_ method: HTTPMethod, to url: WebURI, body: HTTPBody?, headers: HTTPHeaders) -> EventLoopResult<HTTPResponse, Failure>
 
     /// 发送一个自定义 `HTTPRequest`。
     ///
     /// - Parameter request: 要发送的请求对象。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
-    func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    @Sendable func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
 }
 
 public extension WhooshingClient {
     @inlinable
+    @Sendable 
     func get(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -142,6 +143,7 @@ public extension WhooshingClient {
     }
     
     @inlinable
+    @Sendable
     func post(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -151,6 +153,7 @@ public extension WhooshingClient {
     }
     
     @inlinable
+    @Sendable 
     func patch(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -160,6 +163,7 @@ public extension WhooshingClient {
     }
     
     @inlinable
+    @Sendable 
     func put(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -169,6 +173,7 @@ public extension WhooshingClient {
     }
     
     @inlinable
+    @Sendable 
     func delete(
         _ url: WebURI,
         body: HTTPBody? = nil,
@@ -178,6 +183,7 @@ public extension WhooshingClient {
     }
     
     @inlinable
+    @Sendable 
     func send(
         _ method: HTTPMethod,
         to url: WebURI,
