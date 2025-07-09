@@ -219,10 +219,13 @@ extension RequestWrapperHandler {
     }
 }
 
+@usableFromInline
 final class SendTaskGroup: @unchecked Sendable {
     
+    @usableFromInline
     let lock = NIOLock()
     
+    @inlinable
     var tasks: [Task<Void, Never>] {
         get {
             lock.withLock {
@@ -236,14 +239,17 @@ final class SendTaskGroup: @unchecked Sendable {
         }
     }
     
-    private var __tasks: [Task<Void, Never>] = []
-
+    @usableFromInline
+    private(set) var __tasks: [Task<Void, Never>] = []
+    
+    @inlinable
     func add(_ operation: @escaping @Sendable () async -> Void) {
         tasks.append(Task {
             await operation()
         })
     }
 
+    @inlinable
     func waitAll() async {
         for t in tasks {
             await t.value
