@@ -21,7 +21,4 @@ jobs:
 
       with_musl: true
       extra_musl_flags: --target WhooshingClient
-
-      only_build: false
-      with_pg_test: false
     secrets: inherit
