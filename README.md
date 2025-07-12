@@ -318,6 +318,6 @@ for try await (ctx, chunk) in stream.withProgress() {
 
 ### 联系与反馈
 
-如有使用问题或建议，请通过 [GitHub Issues](https://github.com/SJJC-Team/whooshing.toolbox-server/issues) 提交反馈。
+如有使用问题或建议，请通过 [GitHub Issues](https://github.com/SJJC-Team/whooshing.toolbox-client/issues) 提交反馈。
 
 或发至邮箱 [contact@official.whooshings.space](mailto:contact@official.whooshings.space)
