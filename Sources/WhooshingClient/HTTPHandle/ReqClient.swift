@@ -64,7 +64,7 @@ extension ReqClient {
     public func makeChannel(url: WebURI) -> EventLoopRes<(Channel, RequestWrapperHandler, domain: String?), Errcase> {
         
         guard [.http, .https].contains(url.scheme) else {
-            return eventLoop.makeFailedResult(Errcase.requestFormatError, "预期请求协议为 http 或 https，但得到 \(url.scheme)")
+            return eventLoop.makeFailedResult(Errcase.requestFormatError, "无效协议，预期请求协议为 http 或 https", metadata: ["schema": .data(url)])
         }
 
         let port: Int
@@ -73,7 +73,7 @@ extension ReqClient {
             port = url.port ?? (url.scheme == .https ? 443 : 20002)
         } else {
             guard let p = url.port else {
-                return eventLoop.makeFailedResult(Errcase.requestFormatError, "无法获取 Port")
+                return eventLoop.makeFailedResult(Errcase.requestFormatError, "取得目标 Port 失败", metadata: ["schema": .data(url)])
             }
             port = p
         }
@@ -87,19 +87,19 @@ extension ReqClient {
             }.withError(Errcase.tcpHandlerInitialFailed)
         }
         
-        let cryptoHandler = RequestCryptoHandler(logger: logger, ioHandler: ioHandler)
-        let wrapperHandler = RequestWrapperHandler(logger: logger)
+        let cryptoHandler = RequestCryptoHandler(logger: logger?.derive(subId: "handler.crypto"), ioHandler: ioHandler)
+        let wrapperHandler = RequestWrapperHandler(logger: logger?.derive(subId: "handler.wrapper"))
 
         let bootstrap = ClientBootstrap(group: self.eventLoop)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([
                     NIOCloseOnErrorHandler(),
-                    RequestBackPressureHandler(),
+                    RequestBackPressureHandler(logger: self.logger?.derive(subId: "handler.backpressure")),
                     LengthFieldPrepender(lengthFieldLength: .eight, lengthFieldEndianness: .big),
                     ByteToMessageHandler(LengthFieldBasedFrameDecoder(lengthFieldLength: .eight, lengthFieldEndianness: .big))
                 ]).flatMap {
-                    channel.eventLoop.makeFutureWithTask {
-                        let handlers: [ChannelHandler & Sendable] = [
+                    channel.eventLoop.bridge {
+                        let handlers: [ChannelHandler] = [
                             cryptoHandler,
                             HTTPRequestEncoder(configuration: .init()),
                             ByteToMessageHandler(HTTPResponseDecoder(leftOverBytesStrategy: .dropBytes)),
@@ -151,7 +151,7 @@ extension ReqClient {
     }
     
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
-        eventLoop.makeResultWithTask { () throws(BscError<Errcase>) in
+        eventLoop.bridge { () throws(BscError<Errcase>) in
             try await self.removeHTTPHandlers().get()
         }
     }

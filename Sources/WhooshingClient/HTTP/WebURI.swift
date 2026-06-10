@@ -1,11 +1,12 @@
 import ErrorHandle
 import Foundation
+import LoggingAdvanced
 
 /// 表示一个 Web URI（统一资源标识符），支持标准的 HTTP/HTTPS/WS/WSS 协议解析与构造。
 /// 提供便捷的字符串初始化、路径、查询参数、片段等组成部分访问功能。
 /// 支持字符串字面量初始化、描述输出、序列化与发送。
 @frozen
-public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation, Codable, Sendable {
+public struct WebURI: ExpressibleByStringInterpolation, Codable, Sendable {
     
     /// Web URI 支持的协议方案，如 http、https、ws、wss。
     /// 枚举值直接对应协议字符串，便于统一管理与比较。
@@ -47,9 +48,6 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
     public let string: String
     /// 表示放在 HTTP Request 中的 Path + Query 路径
     public let queryPath: String
-    
-    /// WebURI 的字符串描述，等价于其完整字符串形式。
-    public var description: String { string }
     
     /// 允许通过字符串字面量（例如 "https://example.com"）创建 WebURI 实例。
     /// 如果解析失败会触发运行时崩溃。
@@ -180,4 +178,9 @@ public struct WebURI: CustomStringConvertible, ExpressibleByStringInterpolation,
         if let fragment = fragment?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { res += "#\(fragment)" }
         return res
     }
+}
+
+extension WebURI: CustomStringConvertible, Loggerable {
+    /// WebURI 的字符串描述，等价于其完整字符串形式。
+    public var description: String { string }
 }

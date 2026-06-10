@@ -3,11 +3,12 @@ import NIOCore
 import ErrorHandle
 import Foundation
 import AsyncHTTPClient
+import LoggingAdvanced
 
 /// 表示一个 HTTP 请求，封装了请求方法、URL、版本、头部和请求体，
 /// 提供便于在客户端或服务器中构建、序列化、调试 HTTP 请求的接口。
 @frozen
-public struct HTTPRequest: Sendable, CustomStringConvertible {
+public struct HTTPRequest: Sendable {
     
     /// HTTP 请求方法，例如 GET、POST、PUT 等。
     public var method: HTTPMethod
@@ -55,25 +56,6 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
     @usableFromInline
     private(set) var __body: HTTPBody?
     
-    /// 返回请求的完整字符串表示，包含请求行、头部和正文内容（如为流则显示占位信息）。
-    @inlinable
-    public var description: String {
-        let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
-        
-        var headerLines = headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
-        if !headerLines.isEmpty { headerLines += "\r\n" }
-        
-        let bodyString: String
-        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
-            var copy = body
-            bodyString = copy.readString(length: copy.readableBytes) ?? ""
-        } else {
-            bodyString = "<<async stream content>>"
-        }
-        
-        return requestLine + headerLines + "\r\n" + bodyString
-    }
-    
     /// 将 HTTPRequest 转换为字节缓冲区形式，便于通过底层网络传输。
     ///
     /// - Parameter bufferAllocator: ByteBuffer 分配器，默认新建一个。
@@ -109,5 +91,26 @@ public struct HTTPRequest: Sendable, CustomStringConvertible {
         self.version = version
         self.headers = headers
         self.body = body
+    }
+}
+
+extension HTTPRequest: CustomStringConvertible, Loggerable {
+    /// 返回请求的完整字符串表示，包含请求行、头部和正文内容（如为流则显示占位信息）。
+    @inlinable
+    public var description: String {
+        let requestLine = "\(method.rawValue) \(url.queryPath) HTTP/\(version.major).\(version.minor)\r\n"
+        
+        var headerLines = headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
+        if !headerLines.isEmpty { headerLines += "\r\n" }
+        
+        let bodyString: String
+        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
+            var copy = body
+            bodyString = copy.readString(length: copy.readableBytes) ?? ""
+        } else {
+            bodyString = "<<async stream content>>"
+        }
+        
+        return requestLine + headerLines + "\r\n" + bodyString
     }
 }

@@ -49,9 +49,11 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {
-        fileEventLoop.makeFutureWithTask { () throws(Failure) in
+        fileEventLoop.bridge { () throws(Failure) in
             try await self.streamingSend(request)
-        }.withError()
+        }
+        .withError()
+        .logIfFailAndExist(logger: self.logger)
     }
 
     /// 析构函数，在实例释放时关闭内部 HTTPClient。

@@ -8,6 +8,8 @@ import Logging
 import Foundation
 import AsyncHTTPClient
 import NIOFoundationCompat
+import AnyCodable
+import LoggingAdvanced
 
 extension APIReqClient {
     @inlinable
@@ -26,7 +28,7 @@ enum API {
     }
     
     @usableFromInline
-    final class RequestIOData: SendableStorage.Key, Sendable {
+    final class RequestIOData: SendableStorage.Key, Sendable, CustomStringConvertible, Loggerable {
         @usableFromInline typealias Value = RequestIOData
         @usableFromInline let credential: String
         @usableFromInline let token: String
@@ -38,6 +40,13 @@ enum API {
         init(credential: String, token: String) {
             self.credential = credential
             self.token = token
+        }
+        
+        @inlinable
+        public var description: String {
+            formatJson([
+                "credential": AnyCodable(credential)
+            ])
         }
     }
     
@@ -64,17 +73,22 @@ enum API {
         /// 发送请求时，进行编码并加密
         @usableFromInline
         func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
-            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
+            logger?.debug("API.Client.HTTP-发送请求，进行加密", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
+            guard data.readableBytes > 0 else {
+                logger?.warning("请求数据为空，忽略")
+                return context.eventLoop.makeSucceededResult(data)
+            }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
-                logger?.trace("API.Client.HTTP-发送请求，进行加密(key: \(ioData.connectionKeys[id] != nil)) in \(context.channel.clientAddrInfo)")
                 if let key = ioData.connectionKeys[id] {
+                    logger?.debug("使用已有密钥加密通讯")
                     cipher = try required(throws: Errcase.requestEncryptFailed) {
                         try Crypto.Symm.encrypt(data, key: key).get()
                     }
                 } else {
+                    logger?.debug("首次请求，直接发送明文凭据", metadata: ["data": .stringConvertible(data)])
                     // 代表首次请求，直接发送明文
                     // 用户凭据可明文发送，且用户口令会加密处理，因此整个请求无需加密
                     cipher = .init(buffer: data)
@@ -88,11 +102,14 @@ enum API {
         
         @usableFromInline
         func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+            logger?.debug("API.Client.HTTP-收到响应，先检查是否有报错", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             let id = ObjectIdentifier(context.channel)
-            let channel = context.channel
             
-            guard data.readableBytes > 0 else { return context.eventLoop.makeSucceededResult(data) }
-            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
+            guard data.readableBytes > 0 else {
+                logger?.warning("请求数据为空，忽略")
+                return context.eventLoop.makeSucceededResult(data)
+            }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData 读取失败")) }
             
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
             if let _ = ioData.errorTemps[id] {
@@ -101,7 +118,7 @@ enum API {
                 ioData.errorTemps[id] = nil
                 return context.eventLoop.makeFailedResult(err)
             } else {
-                // 错误不存在，从对方的相应中尝试解析出错误
+                // 错误不存在，从对方的响应中尝试解析出错误
                 if lightweightParseHTTP1StatusCode(from: data) {
                     ioData.errorTemps[id] = true
                     return context.eventLoop.makeSucceededResult(data)
@@ -109,13 +126,15 @@ enum API {
             }
                 
             do {
-                logger?.trace("API.Client.HTTP-收到响应，进行解密(key: \(ioData.connectionKeys[id] != nil)) in \(channel.clientAddrInfo)")
+                logger?.debug("API.Client.HTTP-收到响应，进行解密", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
                 var plain: ByteBuffer
                 if let key = ioData.connectionKeys[id] {
+                    logger?.debug("使用已有密钥进行解密")
                     plain = try required(throws: Errcase.responseDecryptFailed) {
                         try Crypto.Symm.decrypt(.init(buffer: data), key: key).get()
                     }
                 } else {
+                    logger?.debug("首次得到响应，使用默认密钥分析响应")
                     guard let token = Data(base64Encoded: ioData.token) else {
                         throw Errcase.parseResponseFailed.d("用户口令")
                     }

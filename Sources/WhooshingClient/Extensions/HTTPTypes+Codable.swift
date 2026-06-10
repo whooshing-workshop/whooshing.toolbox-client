@@ -1,6 +1,6 @@
 import NIOHTTP1
 
-extension HTTPVersion: Codable {
+extension HTTPVersion: @retroactive Codable {
     @inlinable
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -23,7 +23,7 @@ extension HTTPVersion: Codable {
     }
 }
 
-extension HTTPMethod: Codable {
+extension HTTPMethod: @retroactive Codable {
     @inlinable
     public init(from decoder: any Decoder) throws {
         let name = try decoder.singleValueContainer().decode(String.self)

@@ -3,11 +3,12 @@ import NIOCore
 import ErrorHandle
 import Foundation
 import AsyncHTTPClient
+import LoggingAdvanced
 
 /// 表示一个 HTTP 响应，包含状态码、版本、头部信息、正文内容和相关通道。
 /// 适用于客户端与服务端的 HTTP 响应处理和构造。
 @frozen
-public struct HTTPResponse: Sendable, CustomStringConvertible {
+public struct HTTPResponse: Sendable {
     
     /// HTTP 协议版本，默认为 HTTP/1.1。
     public var version: HTTPVersion
@@ -53,27 +54,6 @@ public struct HTTPResponse: Sendable, CustomStringConvertible {
     
     @usableFromInline
     private(set) var __body: HTTPBody?
-        
-    /// 响应的字符串描述，包括状态行、头部信息和正文，适用于调试或日志记录。
-    @inlinable
-    public var description: String {
-        let statusLine = "HTTP/\(version.major).\(version.minor) \(status.code) \(status.reasonPhrase)\r\n"
-
-        var headerLines = headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
-        if !headerLines.isEmpty {
-            headerLines += "\r\n"
-        }
-
-        let bodyString: String
-        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
-            var copy = body
-            bodyString = copy.readString(length: copy.readableBytes) ?? ""
-        } else {
-            bodyString = ""
-        }
-
-        return statusLine + headerLines + "\r\n" + bodyString
-    }
     
     /// 创建一个新的 HTTPResponse 实例。
     ///
@@ -93,5 +73,28 @@ public struct HTTPResponse: Sendable, CustomStringConvertible {
         self.version = version
         self.headers = headers
         self.body = body
+    }
+}
+
+extension HTTPResponse: CustomStringConvertible, Loggerable {
+    /// 响应的字符串描述，包括状态行、头部信息和正文，适用于调试或日志记录。
+    @inlinable
+    public var description: String {
+        let statusLine = "HTTP/\(version.major).\(version.minor) \(status.code) \(status.reasonPhrase)\r\n"
+
+        var headerLines = headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
+        if !headerLines.isEmpty {
+            headerLines += "\r\n"
+        }
+
+        let bodyString: String
+        if case let .bytes(body) = self.body?.type, body.readableBytes > 0 {
+            var copy = body
+            bodyString = copy.readString(length: copy.readableBytes) ?? ""
+        } else {
+            bodyString = ""
+        }
+
+        return statusLine + headerLines + "\r\n" + bodyString
     }
 }

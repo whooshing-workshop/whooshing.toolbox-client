@@ -1,5 +1,5 @@
 {
-  "originHash" : "aa6406813c5950d2f9f9446b3289c6be714c1bc8a4c5c8c2c2b3fba7ff0f0980",
+  "originHash" : "96b643838346d0b090dee89e7c93245e5fc842a22de1467b0c5a52bb4a157c3a",
   "pins" : [
     {
       "identity" : "anycodable",
@@ -195,8 +195,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/whooshing-workshop/whooshing.toolbox-basic.git",
       "state" : {
-        "revision" : "bcc3f65790b9938931c2e608753d47e52cca6a49",
-        "version" : "1.5.4"
+        "revision" : "32f9c04fa274850d802b5b6299a4cd472442c3ba",
+        "version" : "1.5.5"
       }
     }
   ],

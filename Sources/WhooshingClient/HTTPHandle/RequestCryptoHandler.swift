@@ -48,7 +48,7 @@ public extension RequestCryptoIOHandler {
     func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
 }
 
-final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChannelHandler, @unchecked Sendable where IOHandler: RequestCryptoIOHandler{
+final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChannelHandler, Sendable where IOHandler: RequestCryptoIOHandler{
     typealias InboundIn = ByteBuffer
     typealias InboundOut = ByteBuffer
     typealias OutboundIn = ByteBuffer
@@ -69,23 +69,34 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        guard ioHandler.isAvaliable else { return }
+        self.logger?.debug("Channel 读取数据", metadata: ["data": .string(data.description)])
+        guard ioHandler.isAvaliable else {
+            self.logger?.debug("Channel 不可用")
+            return
+        }
         let buffer = unwrapOutboundIn(data)
+        self.logger?.debug("要读取的密文数据", metadata: ["buffer": .stringConvertible(buffer)])
+        let loopBound = context.loopBound
         ioHandler.get(data: buffer, context: context).whenComplete { res in
             switch res {
-            case .success(let response):
-                context.fireChannelRead(self.wrapOutboundOut(response))
+            case .success(let plain):
+                self.logger?.debug("buffer 数据解密成功, flush 明文数据", metadata: ["plain": .stringConvertible(plain)])
+                loopBound.value.fireChannelRead(self.wrapOutboundOut(plain))
             case .failure(let err):
-                self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
+                self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
             }
         }
     }
     
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        self.logger?.debug("Channel 写入数据", metadata: ["data": .string(data.description)])
         guard ioHandler.isAvaliable else { return }
         let buffer = unwrapInboundIn(data)
-        let res = ioHandler.send(data: buffer, context: context).wrapped.flatMap { res in
-            context.writeAndFlush(self.wrapOutboundOut(res))
+        self.logger?.debug("要写入的明文数据", metadata: ["buffer": .stringConvertible(buffer)])
+        let loopBound = context.loopBound
+        let res = ioHandler.send(data: buffer, context: context).wrapped.flatMap { cipher in
+            self.logger?.debug("buffer 数据加密完成，flush 密文数据", metadata: ["cipher": .stringConvertible(cipher)])
+            return loopBound.value.writeAndFlush(self.wrapOutboundOut(cipher))
         }
         
         if let p = promise {
@@ -93,23 +104,19 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         }
     }
     
-    func logIfTracing(prefix: String, context: ChannelHandlerContext, size: Int) {
-        if let logger = self.logger, logger.logLevel == .trace {
-            self.logger?.trace("\(prefix): \(context.channel.clientAddrInfo), 大小: \(ChunkTool.formatByteSize(size))")
-        }
-    }
-    
     func channelRegistered(context: ChannelHandlerContext) {
         context.fireChannelRegistered()
+        let loopBound = context.loopBound
         ioHandler.connectionStart(context: context).whenFailure { err in
-            self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
         }
     }
     
     func channelUnregistered(context: ChannelHandlerContext) {
         context.fireChannelUnregistered()
+        let loopBound = context.loopBound
         ioHandler.connectionEnd(context: context).whenFailure { err in
-            self.errorCaught(context: context, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
         }
     }
     
