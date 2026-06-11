@@ -60,6 +60,7 @@ public final class ApiClient: Sendable {
     /// 关闭所有正在进行的连线
     @inlinable
     public func closeAll() async {
+        logger?.info("API.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
         await client.closeAll()
     }
 

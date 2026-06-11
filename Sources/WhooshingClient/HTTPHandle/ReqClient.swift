@@ -144,7 +144,9 @@ extension ReqClient {
     }
 
     public func closeAll() async {
+        self.logger?.info("关闭所有该 Handler 处理的 Channels", metadata: ["client_addr": .string(channel?.clientAddrInfo ?? "released")])
         for (_, channel) in channelPool {
+            self.logger?.info("正在关闭 Channel", metadata: ["channel_client_addr": .string(channel.clientAddrInfo)])
             try? await channel.close(mode: .all)
         }
         channelPool.removeAll()
@@ -160,6 +162,7 @@ extension ReqClient {
         guard let channel = self.channel else { return .success(()) }
         for name in self.removableHandlerNames {
             do {
+                self.logger?.debug("正在移除 Handler", metadata: ["handler_name": .string(name), "client_addr": .string(channel.clientAddrInfo)])
                 try await required(throws: Errcase.tcpHandlerRemoveFailed) {
                     try await channel.pipeline.removeHandler(name: name)
                 }

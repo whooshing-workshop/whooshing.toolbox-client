@@ -105,6 +105,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     }
     
     func channelRegistered(context: ChannelHandlerContext) {
+        self.logger?.debug("Channel 被注册", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
         context.fireChannelRegistered()
         let loopBound = context.loopBound
         ioHandler.connectionStart(context: context).whenFailure { err in
@@ -113,6 +114,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     }
     
     func channelUnregistered(context: ChannelHandlerContext) {
+        self.logger?.debug("Channel 被注销", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
         context.fireChannelUnregistered()
         let loopBound = context.loopBound
         ioHandler.connectionEnd(context: context).whenFailure { err in

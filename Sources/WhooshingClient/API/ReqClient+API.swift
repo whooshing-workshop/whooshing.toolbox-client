@@ -32,7 +32,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
             .errCast(Errcase.tcpChannelAssignFailed)
             .flatMap
         { channel, handler, domain in
-            self.logger?.info("API.Client-发送请求", metadata: ["local_addr": .string(channel.localAddrInfo), "remote_addr": .string(channel.remoteAddrInfo)])
+            self.logger?.info("API.Client-发送请求", metadata: ["client_addr": .string(channel.clientAddrInfo)])
             return self._send(request: request, channel: channel, handler: handler, domain: domain)
         }.logIfFailAndExist(logger: self.logger)
     }
