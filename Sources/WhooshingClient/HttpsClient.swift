@@ -64,6 +64,20 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
         .logIfFailAndExist(logger: self.logger)
     }
 
+    /// 关闭所有正在进行的连线
+    @inlinable
+    public func shutdown() async throws {
+        logger?.info("HTTPS.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
+        try await self.client.shutdown()
+    }
+    
+    /// 关闭所有正在进行的连线
+    @inlinable
+    public func syncShutdown() throws {
+        logger?.info("HTTPS.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
+        try self.client.syncShutdown()
+    }
+    
     /// 析构函数，在实例释放时关闭内部 HTTPClient。
     @inlinable
     deinit {

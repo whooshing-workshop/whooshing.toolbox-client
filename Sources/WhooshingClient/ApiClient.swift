@@ -5,6 +5,7 @@ import NIO
 import NIOAdvanced
 import Logging
 import NIOHTTP1
+import Dispatch
 import AsyncHTTPClient
 
 /// 一个用于发起 API 子模块请求的客户端类，封装了鉴权和请求配置。
@@ -57,11 +58,36 @@ public final class ApiClient: Sendable {
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
     }
     
+//    /// 关闭所有正在进行的连线
+//    @inlinable
+//    public func shutdown() async throws {
+//        logger?.info("API.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
+//        try await self.client.shutdown()
+//    }
+    
     /// 关闭所有正在进行的连线
     @inlinable
-    public func closeAll() async {
+    public func shutdown() async throws {
         logger?.info("API.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
         await client.closeAll()
+    }
+    
+    @inlinable
+    public func syncShutdown() throws {
+        let semaphore = DispatchSemaphore(value: 0)
+        let errorBox = Box()
+        Task.detached {
+            do {
+                try await self.shutdown()
+            } catch {
+                errorBox.error = error
+            }
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        
+        if let e = errorBox.error { throw e }
     }
 
     @inlinable
@@ -95,4 +121,11 @@ extension ApiClient: WhooshingClient {
 
     @inlinable
     public var fileEventLoop: any EventLoop { client.fileEventLoop }
+}
+
+public final class Box: @unchecked Sendable {
+    public var error: Error?
+    public init(error: Error? = nil) {
+        self.error = error
+    }
 }

@@ -129,6 +129,10 @@ public protocol WhooshingClient: AnyObject, Sendable {
     /// - Parameter request: 要发送的请求对象。
     /// - Returns: 表示响应的 `EventLoopFuture<HTTPResponse>`。
     func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    
+    func shutdown() async throws
+    
+    func syncShutdown() throws
 }
 
 public extension WhooshingClient {
@@ -190,39 +194,53 @@ public extension WhooshingClient {
 }
 
 public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where Errcase: ErrList {
-    @inlinable public var fileEventLoop: any EventLoop { getFileEventLoop() }
-    @inlinable public var key: SendableSymmKey? { getKey() }
-    @inlinable public var channel: (any Channel)? { getChannel() }
+    @inlinable public var fileEventLoop: any EventLoop { _getFileEventLoop() }
+    @inlinable public var key: SendableSymmKey? { _getKey() }
+    @inlinable public var channel: (any Channel)? { _getChannel() }
     
-    @usableFromInline let getFileEventLoop: @Sendable () -> any EventLoop
-    @usableFromInline let getKey: @Sendable () -> SendableSymmKey?
-    @usableFromInline let getChannel: @Sendable () -> (any Channel)?
-    @usableFromInline let removeHTTPHandlers: @Sendable () async -> Result<Void, Failure>
-    @usableFromInline let removeHTTPHandlers2: @Sendable (any EventLoop) -> EventLoopResult<Void, Failure>
-    @usableFromInline let send: @Sendable (_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    @usableFromInline let _getFileEventLoop: @Sendable () -> any EventLoop
+    @usableFromInline let _getKey: @Sendable () -> SendableSymmKey?
+    @usableFromInline let _getChannel: @Sendable () -> (any Channel)?
+    @usableFromInline let _removeHTTPHandlers: @Sendable () async -> Result<Void, Failure>
+    @usableFromInline let _removeHTTPHandlers2: @Sendable (any EventLoop) -> EventLoopResult<Void, Failure>
+    @usableFromInline let _send: @Sendable (_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure>
+    @usableFromInline let _shutdown: @Sendable () async throws -> Void
+    @usableFromInline let _syncShutdown: @Sendable () throws -> Void
     
     @inlinable
     public init<T>(_ wrapped: T) where T: WhooshingClient & Sendable, T.Errcase == Errcase {
-        self.getFileEventLoop = { @Sendable in wrapped.fileEventLoop }
-        self.getKey = { @Sendable in wrapped.key }
-        self.getChannel = { @Sendable in wrapped.channel }
-        self.removeHTTPHandlers = { @Sendable in await wrapped.removeHTTPHandlers() }
-        self.removeHTTPHandlers2 = { @Sendable in wrapped.removeHTTPHandlers(in: $0) }
-        self.send = { @Sendable in wrapped.send($0) }
+        self._getFileEventLoop = { @Sendable in wrapped.fileEventLoop }
+        self._getKey = { @Sendable in wrapped.key }
+        self._getChannel = { @Sendable in wrapped.channel }
+        self._removeHTTPHandlers = { @Sendable in await wrapped.removeHTTPHandlers() }
+        self._removeHTTPHandlers2 = { @Sendable in wrapped.removeHTTPHandlers(in: $0) }
+        self._send = { @Sendable in wrapped.send($0) }
+        self._shutdown = { @Sendable in try await wrapped.shutdown() }
+        self._syncShutdown = { @Sendable in try wrapped.syncShutdown() }
     }
     
     @inlinable
     public func removeHTTPHandlers() async -> Result<Void, Failure> {
-        await removeHTTPHandlers()
+        await _removeHTTPHandlers()
     }
     
     @inlinable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
-        removeHTTPHandlers2(eventLoop)
+        _removeHTTPHandlers2(eventLoop)
     }
     
     @inlinable
     public func send(_ request: HTTPRequest) -> EventLoopResult<HTTPResponse, Failure> {
-        send(request)
+        _send(request)
+    }
+    
+    @inlinable
+    public func shutdown() async throws {
+        try await _shutdown()
+    }
+    
+    @inlinable
+    public func syncShutdown() throws {
+        try _syncShutdown()
     }
 }
