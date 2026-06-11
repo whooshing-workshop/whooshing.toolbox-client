@@ -72,7 +72,7 @@ enum API {
         func send(data: ByteBuffer, context: ChannelHandlerContext, logger: Logger?) -> EventLoopRes<ByteBuffer, Errcase> {
             logger?.debug("API.Client.HTTP-发送请求，进行加密", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             guard data.readableBytes > 0 else {
-                logger?.warning("请求数据为空，忽略")
+                logger?.debug("请求数据为空，忽略")
                 return context.eventLoop.makeSucceededResult(data)
             }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
@@ -103,7 +103,7 @@ enum API {
             let id = ObjectIdentifier(context.channel)
             
             guard data.readableBytes > 0 else {
-                logger?.warning("响应数据为空，忽略")
+                logger?.debug("响应数据为空，忽略")
                 return context.eventLoop.makeSucceededResult(data)
             }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData 读取失败")) }

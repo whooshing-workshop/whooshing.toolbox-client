@@ -95,17 +95,17 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
                 Task {
                     do {
                         for try await chunk in stream {
-                            try await loopBound.value.eventLoop.flatSubmit {
+                            try await loopBound.eventLoop.flatSubmit {
                                 self.logger?.debug("请求流写入数据体", metadata: ["data": .stringConvertible(chunk)])
                                 return loopBound.value.writeAndFlush(self.wrapOutboundOut(.body(.byteBuffer(chunk))))
                             }.get()
                         }
-                        try await loopBound.value.eventLoop.flatSubmit {
+                        try await loopBound.eventLoop.flatSubmit {
                             self.logger?.debug("请求流写入结尾")
                             return loopBound.value.writeAndFlush(self.wrapOutboundOut(.end(nil)))
                         }.get()
                     } catch {
-                        try? await loopBound.value.eventLoop.submit {
+                        try? await loopBound.eventLoop.submit {
                             self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(error))
                         }.get()
                     }
@@ -225,7 +225,7 @@ extension RequestWrapperHandler {
             sendGroup.add {
                 await writer.send(body)
                 self.logger?.debug("收集到数据-流式", metadata: ["data": .stringConvertible(body)])
-                try? await loopBound.value.eventLoop.submit {
+                try? await loopBound.eventLoop.submit {
                     loopBound.value.triggerUserOutboundEvent(ReadingStatus.resume, promise: nil)
                 }.get()
             }
