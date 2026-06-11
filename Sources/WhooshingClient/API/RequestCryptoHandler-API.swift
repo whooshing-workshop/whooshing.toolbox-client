@@ -58,21 +58,18 @@ enum API {
         
         @usableFromInline
         weak private(set) var client: APIReqClient?
-        @usableFromInline
-        let logger: Logger?
         
         @inlinable
         var isAvaliable: Bool { client?.apiRequestIoData != nil }
         
         @inlinable
-        init(client: APIReqClient? = nil, logger: Logger?) {
+        init(client: APIReqClient? = nil) {
             self.client = client
-            self.logger = logger
         }
         
         /// 发送请求时，进行编码并加密
         @usableFromInline
-        func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+        func send(data: ByteBuffer, context: ChannelHandlerContext, logger: Logger?) -> EventLoopRes<ByteBuffer, Errcase> {
             logger?.debug("API.Client.HTTP-发送请求，进行加密", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             guard data.readableBytes > 0 else {
                 logger?.warning("请求数据为空，忽略")
@@ -101,12 +98,12 @@ enum API {
         }
         
         @usableFromInline
-        func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopRes<ByteBuffer, Errcase> {
+        func get(data: ByteBuffer, context: ChannelHandlerContext, logger: Logger?) -> EventLoopRes<ByteBuffer, Errcase> {
             logger?.debug("API.Client.HTTP-收到响应，先检查是否有报错", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             let id = ObjectIdentifier(context.channel)
             
             guard data.readableBytes > 0 else {
-                logger?.warning("请求数据为空，忽略")
+                logger?.warning("响应数据为空，忽略")
                 return context.eventLoop.makeSucceededResult(data)
             }
             guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData 读取失败")) }
@@ -153,15 +150,15 @@ enum API {
         
         // 连线建立
         @usableFromInline
-        func connectionStart(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
-            logger?.debug("API.Client-连线建立: \(context.channel.clientAddrInfo)")
+        func connectionStart(context: ChannelHandlerContext, logger: Logger?) -> EventLoopRes<Void, Errcase> {
+            logger?.debug("API.Client-连线建立", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             return context.eventLoop.makeSucceededVoidResult()
         }
 
         // 连线结束，进行清理
         @usableFromInline
-        func connectionEnd(context: ChannelHandlerContext) -> EventLoopRes<Void, Errcase> {
-            logger?.debug("API.Client-连线结束: \(context.channel.clientAddrInfo)")
+        func connectionEnd(context: ChannelHandlerContext, logger: Logger?) -> EventLoopRes<Void, Errcase> {
+            logger?.debug("API.Client-连线结束", metadata: ["client_addr": .string(context.channel.clientAddrInfo)])
             let id = ObjectIdentifier(context.channel)
             client?.apiRequestIoData?.connectionKeys[id] = nil
             client?.apiRequestIoData?.readingBufferDatas[id] = nil

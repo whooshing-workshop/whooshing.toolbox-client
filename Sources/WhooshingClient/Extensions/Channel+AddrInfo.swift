@@ -1,6 +1,6 @@
 import NIOCore
 
-public extension Channel {
+extension Channel {
     @inlinable
     var remoteAddrInfo: String {
         if let addr = self.remoteAddress {

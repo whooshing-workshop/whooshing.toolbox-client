@@ -8,6 +8,7 @@ import Logging
 import NIOHTTP1
 import AsyncHTTPClient
 import Foundation
+import LoggingAdvanced
 
 /// `HttpsClient` 是一个基于 AsyncHTTPClient 封装的异步 HTTPS 请求客户端，
 /// 提供统一的发送逻辑和错误封装，适用于文件传输等高性能场景。
@@ -49,10 +50,17 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     public func send(
         _ request: HTTPRequest
     ) -> EventLoopResult<HTTPResponse, Failure> {
-        fileEventLoop.bridge { () throws(Failure) in
+        self.logger?.info("HTTPS.Client-发送请求", metadata: ["url": .data(request.url)])
+        self.logger?.debug("请求内容", metadata: ["request": .data(request)])
+        return fileEventLoop.bridge { () throws(Failure) in
             try await self.streamingSend(request)
         }
         .withError()
+        .map { res in
+            self.logger?.info("发送请求成功，收到响应", metadata: ["status": .stringConvertible(res.status)])
+            self.logger?.debug("响应内容", metadata: ["response": .data(res)])
+            return res
+        }
         .logIfFailAndExist(logger: self.logger)
     }
 
@@ -99,7 +107,6 @@ extension HttpsClient {
             case .stream(let stream): req.body = .stream(stream, length: .unknown)
             }
         }
-        self.logger?.info("HTTPS.Client-发送请求: \(request.url)")
         let response = try await required(throws: Errcase.requestSendFailed, request.url.string) {
             try await client.execute(req, deadline: .distantFuture, logger: logger)
         }

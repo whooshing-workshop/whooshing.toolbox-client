@@ -7,6 +7,7 @@ import Cryptos
 import NIOHTTP1
 import Foundation
 import AsyncHTTPClient
+import LoggingAdvanced
 
 @usableFromInline
 final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @unchecked Sendable {
@@ -20,7 +21,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
     @inlinable
     static func new(eventLoop: EventLoop, logger: Logger? = nil, byteBufferAllocator: ByteBufferAllocator) -> Self {
         let res = Self(eventLoop: eventLoop, logger: logger, byteBufferAllocator: byteBufferAllocator)
-        res.ioHandler = API.RequestIOCrypto(client: res, logger: logger)
+        res.ioHandler = API.RequestIOCrypto(client: res)
         return res
     }
     
@@ -33,7 +34,12 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
             .flatMap
         { channel, handler, domain in
             self.logger?.info("API.Client-发送请求", metadata: ["client_addr": .string(channel.clientAddrInfo)])
-            return self._send(request: request, channel: channel, handler: handler, domain: domain)
+            self.logger?.debug("请求内容", metadata: ["request": .data(request)])
+            return self._send(request: request, channel: channel, handler: handler, domain: domain).map { res in
+                self.logger?.info("发送请求成功，收到响应", metadata: ["status": .stringConvertible(res.status)])
+                self.logger?.debug("响应内容", metadata: ["response": .data(res)])
+                return res
+            }
         }.logIfFailAndExist(logger: self.logger)
     }
 

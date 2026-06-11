@@ -19,7 +19,7 @@ public protocol RequestCryptoIOHandler: Sendable {
     ///   - data: 原始 HTTP 请求数据。
     ///   - context: 当前 NIO 通道处理上下文。
     /// - Returns: 返回包含最终发送 ByteBuffer 的异步结果。
-    func send(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopResult<ByteBuffer, Failure>
+    func send(data: ByteBuffer, context: ChannelHandlerContext, logger: Logger?) -> EventLoopResult<ByteBuffer, Failure>
 
     /// 解析接收到的响应数据。
     ///
@@ -27,25 +27,25 @@ public protocol RequestCryptoIOHandler: Sendable {
     ///   - data: 从通道中读取的原始响应字节数据。
     ///   - context: 当前通道上下文。
     /// - Returns: 返回解析出的 HTTP 响应及正文 ByteBuffer 的异步结果。
-    func get(data: ByteBuffer, context: ChannelHandlerContext) -> EventLoopResult<ByteBuffer, Failure>
+    func get(data: ByteBuffer, context: ChannelHandlerContext, logger: Logger?) -> EventLoopResult<ByteBuffer, Failure>
 
     /// 通道连接建立时的钩子方法。
     ///
     /// - Parameter context: 通道上下文。
     /// - Returns: 默认返回已完成的 Future，可用于初始化资源。
-    func connectionStart(context: ChannelHandlerContext) -> EventLoopResult<Void, Failure>
+    func connectionStart(context: ChannelHandlerContext, logger: Logger?) -> EventLoopResult<Void, Failure>
 
     /// 通道关闭时的钩子方法。
     ///
     /// - Parameter context: 通道上下文。
     /// - Returns: 默认返回已完成的 Future，可用于释放资源。
-    func connectionEnd(context: ChannelHandlerContext) -> EventLoopResult<Void, Failure>
+    func connectionEnd(context: ChannelHandlerContext, logger: Logger?) -> EventLoopResult<Void, Failure>
 }
 
 public extension RequestCryptoIOHandler {
     var isAvaliable: Bool { true }
-    func connectionStart(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
-    func connectionEnd(context: ChannelHandlerContext) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
+    func connectionStart(context: ChannelHandlerContext, logger: Logger?) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
+    func connectionEnd(context: ChannelHandlerContext, logger: Logger?) -> EventLoopFuture<Void> { context.eventLoop.makeSucceededVoidFuture() }
 }
 
 final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChannelHandler, Sendable where IOHandler: RequestCryptoIOHandler{
@@ -77,7 +77,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         let buffer = unwrapOutboundIn(data)
         self.logger?.debug("要读取的密文数据", metadata: ["buffer": .stringConvertible(buffer)])
         let loopBound = context.loopBound
-        ioHandler.get(data: buffer, context: context).whenComplete { res in
+        ioHandler.get(data: buffer, context: context, logger: logger).whenComplete { res in
             switch res {
             case .success(let plain):
                 self.logger?.debug("buffer 数据解密成功, flush 明文数据", metadata: ["plain": .stringConvertible(plain)])
@@ -94,7 +94,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         let buffer = unwrapInboundIn(data)
         self.logger?.debug("要写入的明文数据", metadata: ["buffer": .stringConvertible(buffer)])
         let loopBound = context.loopBound
-        let res = ioHandler.send(data: buffer, context: context).wrapped.flatMap { cipher in
+        let res = ioHandler.send(data: buffer, context: context, logger: logger).wrapped.flatMap { cipher in
             self.logger?.debug("buffer 数据加密完成，flush 密文数据", metadata: ["cipher": .stringConvertible(cipher)])
             return loopBound.value.writeAndFlush(self.wrapOutboundOut(cipher))
         }
@@ -105,19 +105,19 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
     }
     
     func channelRegistered(context: ChannelHandlerContext) {
-        self.logger?.debug("Channel 被注册", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
+        self.logger?.debug("Channel 将注册", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
         context.fireChannelRegistered()
         let loopBound = context.loopBound
-        ioHandler.connectionStart(context: context).whenFailure { err in
+        ioHandler.connectionStart(context: context, logger: logger).whenFailure { err in
             self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
         }
     }
     
     func channelUnregistered(context: ChannelHandlerContext) {
-        self.logger?.debug("Channel 被注销", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
+        self.logger?.debug("Channel 将注销", metadata: ["channel": .stringConvertible(context.channel.clientAddrInfo)])
         context.fireChannelUnregistered()
         let loopBound = context.loopBound
-        ioHandler.connectionEnd(context: context).whenFailure { err in
+        ioHandler.connectionEnd(context: context, logger: logger).whenFailure { err in
             self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
         }
     }
