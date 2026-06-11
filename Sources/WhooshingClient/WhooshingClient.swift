@@ -62,7 +62,7 @@ public protocol WhooshingClient: AnyObject, Sendable {
     
     /// 用于文件操作的EventLoop
     var fileEventLoop: EventLoop { get }
-    var key: Crypto.Symm.Key? { get }
+    var key: SendableSymmKey? { get }
     var channel: (any Channel)? { get }
     func removeHTTPHandlers() async -> Result<Void, Failure>
     func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure>
@@ -191,11 +191,11 @@ public extension WhooshingClient {
 
 public final class AnyWhooshingClient<Errcase>: WhooshingClient, Sendable where Errcase: ErrList {
     @inlinable public var fileEventLoop: any EventLoop { getFileEventLoop() }
-    @inlinable public var key: Cryptos.Crypto.Symm.Key? { getKey() }
+    @inlinable public var key: SendableSymmKey? { getKey() }
     @inlinable public var channel: (any Channel)? { getChannel() }
     
     @usableFromInline let getFileEventLoop: @Sendable () -> any EventLoop
-    @usableFromInline let getKey: @Sendable () -> Cryptos.Crypto.Symm.Key?
+    @usableFromInline let getKey: @Sendable () -> SendableSymmKey?
     @usableFromInline let getChannel: @Sendable () -> (any Channel)?
     @usableFromInline let removeHTTPHandlers: @Sendable () async -> Result<Void, Failure>
     @usableFromInline let removeHTTPHandlers2: @Sendable (any EventLoop) -> EventLoopResult<Void, Failure>

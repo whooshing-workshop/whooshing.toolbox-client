@@ -32,7 +32,7 @@ enum API {
         @usableFromInline typealias Value = RequestIOData
         @usableFromInline let credential: String
         @usableFromInline let token: String
-        @usableFromInline let connectionKeys: SendableDictionary<ObjectIdentifier, Crypto.Symm.Key> = .init()
+        @usableFromInline let connectionKeys: SendableDictionary<ObjectIdentifier, SendableSymmKey> = .init()
         @usableFromInline let readingBufferDatas: SendableDictionary<ObjectIdentifier, ByteBuffer> = .init()
         @usableFromInline let errorTemps: SendableDictionary<ObjectIdentifier, Bool> = .init()
         
@@ -85,7 +85,7 @@ enum API {
                 if let key = ioData.connectionKeys[id] {
                     logger?.debug("使用已有密钥加密通讯")
                     cipher = try required(throws: Errcase.requestEncryptFailed) {
-                        try Crypto.Symm.encrypt(data, key: key).get()
+                        try Crypto.Symm.encrypt(data, key: key.key).get()
                     }
                 } else {
                     logger?.debug("首次请求，直接发送明文凭据", metadata: ["data": .stringConvertible(data)])
@@ -131,7 +131,7 @@ enum API {
                 if let key = ioData.connectionKeys[id] {
                     logger?.debug("使用已有密钥进行解密")
                     plain = try required(throws: Errcase.responseDecryptFailed) {
-                        try Crypto.Symm.decrypt(.init(buffer: data), key: key).get()
+                        try Crypto.Symm.decrypt(.init(buffer: data), key: key.key).get()
                     }
                 } else {
                     logger?.debug("首次得到响应，使用默认密钥分析响应")

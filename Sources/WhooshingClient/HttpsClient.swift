@@ -20,7 +20,7 @@ import Foundation
 ///
 /// - Warning: 该类型并没有配置 Backpressure 机制，因此不适合发送大型数据流，谨慎使用
 public final class HttpsClient: WhooshingClient, @unchecked Sendable {
-    public var key: Cryptos.Crypto.Symm.Key? { fatalError("永远不应调用此属性") }
+    public var key: SendableSymmKey? { fatalError("永远不应调用此属性") }
     public var channel: (any NIOCore.Channel)? { fatalError("永远不应调用此属性") }
     public var fileEventLoop: any NIOCore.EventLoop
     public let logger: Logger?

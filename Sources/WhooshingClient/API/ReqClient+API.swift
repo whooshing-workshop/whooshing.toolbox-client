@@ -118,7 +118,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
                     body: body
                 )
             )
-        }.flatMap { ioData, req in
+        }.flatMap { (ioData: API.RequestIOData, req) in
             self.send(req, channel: channel, handler: handler).errCast(Errcase.tcpSendFailed).map { (ioData, $0) }
         }.flatMapThrowing { ioData, res throws(Failure) in
             self.logger?.debug("API.Client-正在完成认证: 认证请求发送完成", metadata: ["result": .data(res)])
@@ -143,7 +143,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
             }
             
             self.logger?.debug("API.Client-正在完成认证: 使用用户口令解密新密钥")
-            let newKey: Crypto.Symm.Key = try required(throws: Errcase.decryptFailed) {
+            let newKey: SendableSymmKey = try required(throws: Errcase.decryptFailed) {
                 try Crypto.Symm.decrypt(keyEncrypted, key: tokenKey).get()
             }
             

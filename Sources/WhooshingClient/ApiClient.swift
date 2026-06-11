@@ -19,7 +19,7 @@ import AsyncHTTPClient
 public final class ApiClient: Sendable {
     
     @inlinable
-    public var key: Crypto.Symm.Key? {
+    public var key: SendableSymmKey? {
         guard
             let ioData = client.storage[API.RequestIOData.self],
             let channel = client.channel,
