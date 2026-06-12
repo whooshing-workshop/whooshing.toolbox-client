@@ -67,21 +67,36 @@ public final class HttpsClient: WhooshingClient, @unchecked Sendable {
     /// 关闭所有正在进行的连线
     @inlinable
     public func shutdown() async throws {
-        logger?.info("HTTPS.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
+        logger?.info("HTTPS.Client-主动关闭连接")
         try await self.client.shutdown()
     }
     
     /// 关闭所有正在进行的连线
     @inlinable
     public func syncShutdown() throws {
-        logger?.info("HTTPS.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
+        logger?.info("HTTPS.Client-主动关闭连接")
         try self.client.syncShutdown()
     }
     
-    /// 析构函数，在实例释放时关闭内部 HTTPClient。
+    /// 析构函数，安全、非阻塞地在后台关闭内部 HTTPClient
     @inlinable
     deinit {
-        try? self.client.syncShutdown()
+        // 局部捕获 client 指针，防止闭包循环引用 self
+        let clientToShutdown = self.client
+        let logger = self.logger
+        
+        logger?.info("HTTPS.Client-实例释放，开始派发后台异步关闭任务")
+        
+        // 使用 Task.detached 强行脱离当前的 EventLoop 线程
+        Task.detached {
+            do {
+                // 在不阻塞网络线程的情况下，优雅地异步停机
+                try await clientToShutdown.shutdown()
+                logger?.info("HTTPS.Client-内部 HTTPClient 异步释放成功")
+            } catch {
+                logger?.error("HTTPS.Client-内部 HTTPClient 异步释放失败: \(error)")
+            }
+        }
     }
 
     /// 清除当前上下文中的 HTTP handler（该方法目前为兼容协议所需，实际为空实现）。
