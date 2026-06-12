@@ -1,6 +1,7 @@
 import Foundation
 import NIOConcurrencyHelpers
 import ErrorHandle
+import LoggingAdvanced
 
 /// 一个支持顺序生成固定数量 `ProgressContext` 的序列，用于模拟或追踪迭代任务进度。
 ///
@@ -244,7 +245,7 @@ public final class AsyncProgress: AsyncSequence, @unchecked Sendable {
 /// `ProgressContext` 用于追踪任务的当前进度，包括已传输字节数、总字节数、耗时、速度等信息，
 /// 同时携带与该任务相关的通道信息和用户自定义的响应值。
 @frozen
-public struct ProgressContext: Sendable, CustomStringConvertible {
+public struct ProgressContext: Sendable, CustomStringConvertible, Loggerable {
     
     /// 当前任务在整个进度列表中的索引编号（适用于分片或批量任务）。
     public let index: Int
@@ -336,7 +337,12 @@ public struct ProgressContext: Sendable, CustomStringConvertible {
     /// 返回当前进度上下文的字符串描述，方便调试和日志记录。
     @inlinable
     public var description: String {
-        "Progress(\(index), 字节进度: \(bytesPersentageStr) [\(curBytesStr)(\(curBytes))-\(totalBytesStr)(\(totalBytes == nil ? "~" : String(totalBytes!)))], 大小: \(bytes), 完成: \(done), 耗时: \(timeCostStr), 速度: \(speedStr))"
+        "\(index): 字节进度: \(bytesPersentageStr) [\(curBytesStr)(\(curBytes))-\(totalBytesStr)(\(totalBytes == nil ? "~" : String(totalBytes!)))], 大小: \(bytes), 完成: \(done), 耗时: \(timeCostStr), 速度: \(speedStr)"
+    }
+    
+    @inlinable
+    public var summaryDescription: String {
+        "\(index): \(bytesPersentageStr)-\(totalBytesStr), \(timeCostStr)"
     }
     
     @inlinable
