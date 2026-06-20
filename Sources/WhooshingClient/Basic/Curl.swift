@@ -1,6 +1,5 @@
 import Foundation
 import NIOHTTP1
-import ErrorHandle
 
 #if os(Linux)
 import FoundationNetworking

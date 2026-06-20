@@ -1,6 +1,6 @@
 import Testing
-@testable import WhooshingClient
 import Foundation
+@testable import WhooshingClient
 
 @Suite("WebURI Tests")
 struct WebURITests {

@@ -1,6 +1,6 @@
 import Testing
 import NIOEmbedded
-import NIOHTTP1
+import Foundation
 @testable import WhooshingClient
 
 @Suite("Pipeline 测试集")

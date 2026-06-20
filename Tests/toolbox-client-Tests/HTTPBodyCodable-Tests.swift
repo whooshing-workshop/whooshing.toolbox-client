@@ -1,6 +1,4 @@
 import Testing
-import AsyncAlgorithms
-import NIOCore
 import Foundation
 @testable import WhooshingClient
 

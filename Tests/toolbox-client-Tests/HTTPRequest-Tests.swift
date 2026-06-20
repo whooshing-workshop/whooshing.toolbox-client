@@ -1,10 +1,6 @@
 import Testing
-import AsyncAlgorithms
-@testable import WhooshingClient
-import NIOCore
-import NIOHTTP1
 import Foundation
-import Logging
+@testable import WhooshingClient
 
 @Suite("HTTPRequest 测试")
 struct HTTPRequestTests {

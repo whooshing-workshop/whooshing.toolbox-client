@@ -2,7 +2,6 @@ import Cryptos
 import NIOCore
 import NIOHTTP1
 import NIOAdvanced
-import ErrorHandle
 
 /// `WhooshingClient` 是一个通用的 HTTP 客户端协议，
 /// 定义了发送各种 HTTP 请求的方法，包括 GET、POST、PUT、PATCH、DELETE 和自定义方法。

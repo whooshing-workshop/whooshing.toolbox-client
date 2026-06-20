@@ -1,6 +1,5 @@
 import NIOHTTP1
 import NIOCore
-import ErrorHandle
 import Foundation
 import AsyncHTTPClient
 import LoggingAdvanced

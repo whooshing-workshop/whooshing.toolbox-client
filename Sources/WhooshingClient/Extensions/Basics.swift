@@ -1,9 +1,5 @@
 import DataConvertable
 import Foundation
-import Cryptos
-import NIOCore
-import NIOFoundationCompat
-import NIOHTTP1
 
 public extension URL {
     @inlinable

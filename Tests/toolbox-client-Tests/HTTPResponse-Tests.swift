@@ -1,9 +1,6 @@
 import Testing
-import AsyncAlgorithms
-@testable import WhooshingClient
-import NIOHTTP1
-import NIOCore
 import Foundation
+@testable import WhooshingClient
 
 #if WHOOSHING_VAPOR
 import Vapor

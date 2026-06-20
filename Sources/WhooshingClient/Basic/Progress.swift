@@ -1,6 +1,5 @@
 import Foundation
 import NIOConcurrencyHelpers
-import ErrorHandle
 import LoggingAdvanced
 
 /// 一个支持顺序生成固定数量 `ProgressContext` 的序列，用于模拟或追踪迭代任务进度。

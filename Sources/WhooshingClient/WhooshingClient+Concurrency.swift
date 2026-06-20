@@ -1,6 +1,5 @@
 import NIOCore
 import NIOHTTP1
-import ErrorHandle
 import NIOAdvanced
 
 public extension WhooshingClient {
