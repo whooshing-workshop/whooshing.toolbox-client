@@ -123,7 +123,7 @@ extension HttpsClient {
         req.method = request.method
         req.headers = request.headers
         
-        _ = try await required(throws: Errcase.urlConnectionFailed, "URL 地址不可达", metadata: ["url": .data(request.url)], category: .external(suggestions: ["请检查网络连接或联系系统管理员以解决问题"])) {
+        _ = try await required(throws: Errcase.urlConnectionFailed, "URL 地址不可达", metadata: ["url": .data(request.url)], category: .external(suggestions: ["请检查URL以及网络连接或联系系统管理员以解决问题"])) {
             try await Curl.isUriConnectable(request.url.string).get()
         }
         

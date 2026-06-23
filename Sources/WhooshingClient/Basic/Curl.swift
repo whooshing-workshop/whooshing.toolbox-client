@@ -57,7 +57,7 @@ public struct Curl {
     @discardableResult
     static func isUriConnectable(_ uri: String) async -> Res<HTTPResponseStatus, Curl.Err> {
         guard let url = URL(string: uri) else {
-            return .failure(.urlMalformat)
+            return .failure(.urlMalformat, metadata: ["url": .string(uri)], category: .external(suggestions: ["URI 无效，请检查所提供的 URI"]))
         }
         let req = URLRequest(url: url)
 
