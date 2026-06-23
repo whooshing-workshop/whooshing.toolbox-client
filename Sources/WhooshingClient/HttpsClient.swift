@@ -123,7 +123,7 @@ extension HttpsClient {
         req.method = request.method
         req.headers = request.headers
         
-        _ = try await required(throws: Errcase.urlConnectionFailed, request.url.string) {
+        _ = try await required(throws: Errcase.urlConnectionFailed, "URL 地址不可达", metadata: ["url": .data(request.url)], category: .external(suggestions: ["请检查网络连接或联系系统管理员以解决问题"])) {
             try await Curl.isUriConnectable(request.url.string).get()
         }
         
@@ -133,7 +133,7 @@ extension HttpsClient {
             case .stream(let stream): req.body = .stream(stream, length: .unknown)
             }
         }
-        let response = try await required(throws: Errcase.requestSendFailed, request.url.string) {
+        let response = try await required(throws: Errcase.requestSendFailed, request.url.string, category: .inherit) {
             try await client.execute(req, deadline: .distantFuture, logger: logger)
         }
         
@@ -142,10 +142,10 @@ extension HttpsClient {
         for h in response.headers {
             if h.name == "content-length" {
                 guard let bodySize = Int(h.value) else {
-                    throw Errcase.responseParseFailed.d("content-type 头大小解析失败")
+                    throw Errcase.responseParseFailed.d("content-type 头大小解析失败", category: .internal)
                 }
                 
-                res.body = try await required(throws: Errcase.streamingEngageFailed) {
+                res.body = try await required(throws: Errcase.streamingEngageFailed, category: .internal) {
                     try await .bytes(response.body.collect(upTo: bodySize))
                 }
                 return res
@@ -159,7 +159,7 @@ extension HttpsClient {
                         }
                         stream.finish()
                     } catch {
-                        let err = Errcase.streamingEngageFailed.subErr(error)
+                        let err = Errcase.streamingEngageFailed.subErr(error, category: .inherit)
                         stream.fail(err)
                     }
                 }
@@ -167,6 +167,6 @@ extension HttpsClient {
                 return res
             }
         }
-        throw Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头")
+        throw Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头", category: .internal)
     }
 }

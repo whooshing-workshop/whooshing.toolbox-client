@@ -61,7 +61,7 @@ extension ReqClient {
     public func makeChannel(url: WebURI) -> EventLoopRes<(Channel, RequestWrapperHandler, domain: String?), Errcase> {
         
         guard [.http, .https].contains(url.scheme) else {
-            return eventLoop.makeFailedResult(Errcase.requestFormatError, "无效协议，预期请求协议为 http 或 https", metadata: ["schema": .data(url)])
+            return eventLoop.makeFailedResult(Errcase.requestFormatError, "无效协议", metadata: ["schema": .data(url)], category: .external(suggestions: ["预期请求协议为 http 或 https"]))
         }
 
         let port: Int
@@ -70,7 +70,7 @@ extension ReqClient {
             port = url.port ?? (url.scheme == .https ? 443 : 20002)
         } else {
             guard let p = url.port else {
-                return eventLoop.makeFailedResult(Errcase.requestFormatError, "取得目标 Port 失败", metadata: ["schema": .data(url)])
+                return eventLoop.makeFailedResult(Errcase.requestFormatError, "未找到目标端口号", metadata: ["schema": .data(url)], category: .external(suggestions: ["请使用 ip:port 格式指定目标端口号"]))
             }
             port = p
         }
@@ -81,7 +81,7 @@ extension ReqClient {
             return channel.pipeline.handler(type: RequestWrapperHandler.self).flatMap { handler in
                 self.__channel = channel
                 return channel.eventLoop.makeSucceededFuture((channel, handler, isDomainHost ? url.host : nil))
-            }.withError(Errcase.tcpHandlerInitialFailed)
+            }.withError(Errcase.tcpHandlerInitialFailed, category: .inherit)
         }
         
         let cryptoHandler = RequestCryptoHandler(logger: logger?.derive(subId: "handler.crypto"), ioHandler: ioHandler)
@@ -118,7 +118,7 @@ extension ReqClient {
             self.channelPool[id] = channel
             self.__channel = channel
             return (channel, wrapperHandler, isDomainHost ? url.host : nil)
-        }.withError(Errcase.tcpHandlerInitialFailed)
+        }.withError(Errcase.tcpHandlerInitialFailed, category: .internal)
     }
 
     public func send(
@@ -129,14 +129,14 @@ extension ReqClient {
         let promise: EventLoopTarget<HTTPResponse, RequestWrapperHandler.Errcase.ErrType> = channel.eventLoop.makeTarget(of: HTTPResponse.self)
         handler.promise = promise
         return channel.writeAndFlush(client)
-            .withError(Errcase.tcpSendFailed)
+            .withError(Errcase.tcpSendFailed, category: .inherit)
             .flatMapError
         { err in
             self.logger?.warning("\(err)")
-            promise.fail(RequestWrapperHandler.Errcase.cancelled.d())
+            promise.fail(RequestWrapperHandler.Errcase.cancelled.d(category: .internal))
             return channel.eventLoop.makeFailedResult(err)
         }.flatMap {
-            promise.futureResult.errCast(Errcase.tcpHandlerFailed)
+            promise.futureResult.errCast(Errcase.tcpHandlerFailed, category: .inherit)
         }
     }
 
@@ -150,7 +150,7 @@ extension ReqClient {
     }
     
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopRes<Void, Errcase> {
-        eventLoop.bridge { () throws(BscError<Errcase>) in
+        eventLoop.bridge { () throws(Errcase.ErrType) in
             try await self.removeHTTPHandlers().get()
         }
     }
@@ -160,7 +160,7 @@ extension ReqClient {
         for name in self.removableHandlerNames {
             do {
                 self.logger?.debug("正在移除 Handler", metadata: ["handler_name": .string(name), "client_addr": .string(channel.clientAddrInfo)])
-                try await required(throws: Errcase.tcpHandlerRemoveFailed) {
+                try await required(throws: Errcase.tcpHandlerRemoveFailed, category: .inherit) {
                     try await channel.pipeline.removeHandler(name: name)
                 }
             } catch {

@@ -53,13 +53,6 @@ public final class ApiClient: Sendable {
         client.storage[API.RequestIOData.self] = .init(credential: credential, token: token)
     }
     
-//    /// 关闭所有正在进行的连线
-//    @inlinable
-//    public func shutdown() async throws {
-//        logger?.info("API.Client-主动关闭连接", metadata: ["client_addr": .stringConvertible(channel?.clientAddrInfo ?? "released")])
-//        try await self.client.shutdown()
-//    }
-    
     /// 关闭所有正在进行的连线
     @inlinable
     public func shutdown() async throws {
@@ -99,12 +92,12 @@ extension ApiClient: WhooshingClient {
     @inlinable
     public func removeHTTPHandlers(in eventLoop: any EventLoop) -> EventLoopResult<Void, Failure> {
         self.client.removeHTTPHandlers(in: eventLoop)
-            .errCast(Errcase.tcpHandlerRemoveFailed)
+            .errCast(Errcase.tcpHandlerRemoveFailed, category: .inherit)
     }
     
     @inlinable
     public func removeHTTPHandlers() async -> Result<Void, Failure> {
-        await self.client.removeHTTPHandlers().mapError(as: Errcase.tcpHandlerRemoveFailed)
+        await self.client.removeHTTPHandlers().mapError(as: Errcase.tcpHandlerRemoveFailed, category: .inherit)
     }
     
     @inlinable

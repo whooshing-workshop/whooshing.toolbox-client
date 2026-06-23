@@ -37,7 +37,7 @@ public extension HTTPBody {
         if data is String {
             headers.replaceOrAdd(name: "content-type", value: "text/plain")
         }
-        return .init(throws: .dataEncodeFailed) {
+        return .init(throws: .dataEncodeFailed, category: .internal) {
             let bytes = try ByteBuffer(data: data.dataRes.get())
             return .init(type: .bytes(bytes), headers: headers)
         }
@@ -69,7 +69,7 @@ public extension HTTPBody {
     /// - Throws: JSON 编码失败时抛出错误。
     @inlinable
     static func json<T: Encodable>(_ value: T) -> Res<Self, EncodeErrcase> {
-        .init(throws: .dataEncodeFailed) {
+        .init(throws: .dataEncodeFailed, category: .internal) {
             let bytes = try ByteBuffer(data: JSONEncoder().encode(value))
             return .init(type: .bytes(bytes), headers: ["content-type": "application/json"])
         }
@@ -94,7 +94,7 @@ public extension HTTPBody {
                     }
                     res.finish()
                 } catch {
-                    let err = EncodeErrcase.streamEncodeFailed.subErr(error)
+                    let err = EncodeErrcase.streamEncodeFailed.subErr(error, category: .internal)
                     res.fail(err)
                 }
             }
@@ -120,7 +120,7 @@ public extension HTTPBody {
                     }
                     res.finish()
                 } catch {
-                    let err = EncodeErrcase.streamEncodeFailed.subErr(error)
+                    let err = EncodeErrcase.streamEncodeFailed.subErr(error, category: .internal)
                     res.fail(err)
                 }
             }
@@ -156,7 +156,7 @@ public extension HTTPBody {
                 progress?.finish()
             } catch {
                 try await fileHandle?.close()
-                res.fail(EncodeErrcase.fileOperationUnknowErr.subErr(error))
+                res.fail(EncodeErrcase.fileOperationUnknowErr.subErr(error, category: .internal))
                 progress?.finish(throwing: error)
             }
         }

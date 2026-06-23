@@ -25,14 +25,14 @@ public struct Curl {
         task.arguments = ["-c", "curl --silent --output /dev/null --write-out '%{http_code}' \"\(uri)\" 2>&1 || exit $?"]
         task.standardOutput = pipe
         task.standardError = pipe
-        do { try task.run() } catch { return .failure(.unknown) }
+        do { try task.run() } catch { return .failure(.unknown, category: .internal) }
         task.waitUntilExit()
         guard task.terminationStatus == 0 else {
             let code = Int(task.terminationStatus)
             if let err = Curl.Err(rawValue: code) {
-                return .failure(err)
+                return .failure(err, category: .internal)
             } else {
-                return .failure(.nonErrorCode)
+                return .failure(.nonErrorCode, category: .internal)
             }
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -62,12 +62,12 @@ public struct Curl {
         let req = URLRequest(url: url)
 
         return await .async { () throws(Curl.Err.ErrType) in
-            let response = try await required(throws: Curl.Err.readError, "读取数据时出错") {
+            let response = try await required(throws: Curl.Err.readError, "读取数据时出错", category: .external(suggestions: ["请检查您的网络连接"])) {
                 try await URLSession.shared.data(for: req).1
             }
             
             guard let res = response as? HTTPURLResponse else {
-                throw Curl.Err.unknown.d("对方并非支持 HTTP 协议")
+                throw Curl.Err.unknown.d("对方并非支持 HTTP 协议", category: .external(suggestions: ["请联系系统管理员以解决该问题"]))
             }
             return .init(statusCode: res.statusCode)
         }

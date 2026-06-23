@@ -103,7 +103,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
                         }.get()
                     } catch {
                         try? await loopBound.eventLoop.submit {
-                            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(error))
+                            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(error, category: .inherit))
                         }.get()
                     }
                 }
@@ -120,7 +120,7 @@ public final class RequestWrapperHandler: ChannelDuplexHandler, RemovableChannel
             promise?.fail(err)
             context.fireErrorCaught(err)
         } else {
-            let err = Errcase.upstreamFailure.subErr(error)
+            let err = Errcase.upstreamFailure.subErr(error, category: .inherit)
             promise?.fail(err)
             context.fireErrorCaught(err)
         }
@@ -146,7 +146,7 @@ extension RequestWrapperHandler {
             if h.name.lowercased() == "content-length" {
                 self.logger?.debug("该响应为固定响应体的一次响应", metadata: ["content-length": .string(h.value)])
                 guard let bodySize = Int(h.value) else {
-                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("content-type 头大小解析失败"))
+                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("content-type 头大小解析失败", category: .internal))
                     return
                 }
                 self.currentStrategy = .bytes(bodySize)
@@ -162,7 +162,7 @@ extension RequestWrapperHandler {
                 return
             }
         }
-        self.errorCaught(context: context, error: Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头"))
+        self.errorCaught(context: context, error: Errcase.responseNotValid.d("未找到 content-type 或 transfer-encoding 头", category: .internal))
     }
     
     func readBody(
@@ -172,7 +172,7 @@ extension RequestWrapperHandler {
     ) {
         self.logger?.debug("读取到响应体", metadata: ["body": .stringConvertible(body)])
         guard let strategy = self.currentStrategy else {
-            promise.fail(Errcase.internalFailure.d("机制错误，strategy 未指定"))
+            promise.fail(Errcase.internalFailure.d("机制错误，strategy 未指定", category: .internal))
             return
         }
         let loopBound = context.loopBound
@@ -181,7 +181,7 @@ extension RequestWrapperHandler {
             self.logger?.debug("固定响应体收集数据", metadata: ["total_size": .stringConvertible(totalSize)])
             
             guard let res = self.currentResponse else {
-                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头"))
+                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头", category: .internal))
                 return
             }
             
@@ -193,14 +193,14 @@ extension RequestWrapperHandler {
             
             if let resBody = res.body {
                 guard case var .bytes(buffer) = resBody.type else {
-                    self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处的 Response body 应当为 byte"))
+                    self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处的 Response body 应当为 byte", category: .internal))
                     return
                 }
                 
                 buffer.writeImmutableBuffer(body)
                 
                 if buffer.readableBytes > totalSize {
-                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("实际收集到的数据大小与预期不符").metadata([
+                    self.errorCaught(context: context, error: Errcase.responseNotValid.d("实际收集到的数据大小与预期不符", category: .internal).metadata([
                         "expect_size": .string(ChunkTool.formatByteSize(totalSize)),
                         "actual_size": .string(ChunkTool.formatByteSize(buffer.readableBytes))
                     ]))
@@ -235,14 +235,14 @@ extension RequestWrapperHandler {
     ) {
         self.logger?.debug("读取到响应结尾")
         guard let strategy = self.currentStrategy else {
-            self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，strategy 未指定"))
+            self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，strategy 未指定", category: .internal))
             return
         }
         
         switch strategy {
         case .bytes:
             guard let res = self.currentResponse else {
-                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头"))
+                self.errorCaught(context: context, error: Errcase.internalFailure.d("机制错误，此处应当已创建 Response 头", category: .internal))
                 return
             }
             promise.succeed(res)

@@ -15,7 +15,7 @@ let package = Package(
         .library( name: "WhooshingClient", targets: ["WhooshingClient"] ),
     ],
     dependencies: [
-        .package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-basic.git", from: "1.6.0"),
+        .package(url: "https://github.com/whooshing-workshop/whooshing.toolbox-basic.git", from: "1.6.2"),
      	.package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.82.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),

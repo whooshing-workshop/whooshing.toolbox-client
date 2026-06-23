@@ -82,7 +82,7 @@ public struct WebURI: ExpressibleByStringInterpolation, Codable, Sendable {
             let scheme = Scheme(rawValue: schemeStr),
             let host = url.host
         else {
-            throw Errcase.parseFailed.d("所提供的 URI 不合法 (\(string))")
+            throw Errcase.parseFailed.d("所提供的 URI 不合法", category: .external()).metadata(["url_string": .string(string)])
         }
         
         self.scheme = scheme

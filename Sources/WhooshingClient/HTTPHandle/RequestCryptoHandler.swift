@@ -79,7 +79,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
                 self.logger?.debug("buffer 数据解密成功, flush 明文数据", metadata: ["plain": .stringConvertible(plain)])
                 loopBound.value.fireChannelRead(self.wrapOutboundOut(plain))
             case .failure(let err):
-                self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
+                self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err, category: .inherit))
             }
         }
     }
@@ -105,7 +105,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         context.fireChannelRegistered()
         let loopBound = context.loopBound
         ioHandler.connectionStart(context: context, logger: logger).whenFailure { err in
-            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err, category: .inherit))
         }
     }
     
@@ -114,7 +114,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         context.fireChannelUnregistered()
         let loopBound = context.loopBound
         ioHandler.connectionEnd(context: context, logger: logger).whenFailure { err in
-            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err))
+            self.errorCaught(context: loopBound.value, error: Errcase.internalFailure.subErr(err, category: .inherit))
         }
     }
     
@@ -122,7 +122,7 @@ final class RequestCryptoHandler<IOHandler>: ChannelDuplexHandler, RemovableChan
         if let err = error as? Errcase.ErrType {
             context.fireErrorCaught(err)
         } else {
-            let err = Errcase.upstreamFailure.subErr(error)
+            let err = Errcase.upstreamFailure.subErr(error, category: .internal)
             context.fireErrorCaught(err)
         }
     }

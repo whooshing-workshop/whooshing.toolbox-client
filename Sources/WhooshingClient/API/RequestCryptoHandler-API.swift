@@ -70,13 +70,13 @@ enum API {
                 logger?.debug("请求数据为空，忽略")
                 return context.eventLoop.makeSucceededResult(data)
             }
-            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData")) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData", category: .internal)) }
             let id = ObjectIdentifier(context.channel)
             do {
                 let cipher: Data
                 if let key = ioData.connectionKeys[id] {
                     logger?.debug("使用已有密钥加密通讯")
-                    cipher = try required(throws: Errcase.requestEncryptFailed) {
+                    cipher = try required(throws: Errcase.requestEncryptFailed, category: .internal) {
                         try Crypto.Symm.encrypt(data, key: key.key).get()
                     }
                 } else {
@@ -101,7 +101,7 @@ enum API {
                 logger?.debug("响应数据为空，忽略")
                 return context.eventLoop.makeSucceededResult(data)
             }
-            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData 读取失败")) }
+            guard let ioData = client?.apiRequestIoData else { return context.eventLoop.makeFailedResult(Errcase.internalFailure.d("apiRequestIoData 读取失败", category: .internal)) }
             
             // 检查对方回复的是不是一个未加密的 http 回复，如果是，则表示对方出错
             if let _ = ioData.errorTemps[id] {
@@ -122,16 +122,16 @@ enum API {
                 var plain: ByteBuffer
                 if let key = ioData.connectionKeys[id] {
                     logger?.debug("使用已有密钥进行解密")
-                    plain = try required(throws: Errcase.responseDecryptFailed) {
+                    plain = try required(throws: Errcase.responseDecryptFailed, category: .internal) {
                         try Crypto.Symm.decrypt(.init(buffer: data), key: key.key).get()
                     }
                 } else {
                     logger?.debug("首次得到响应，使用默认密钥分析响应")
                     guard let token = Data(base64Encoded: ioData.token) else {
-                        throw Errcase.parseResponseFailed.d("用户口令")
+                        throw Errcase.parseResponseFailed.d("用户口令", category: .internal)
                     }
                     let tokenKey = Crypto.Symm.Key(data: token)
-                    plain = try required(throws: Errcase.responseDecryptFailed) {
+                    plain = try required(throws: Errcase.responseDecryptFailed, category: .internal) {
                         try Crypto.Symm.decrypt(.init(buffer: data), key: tokenKey).get()
                     }
                 }
@@ -139,7 +139,7 @@ enum API {
             } catch let error as Errcase.ErrType {
                 return context.eventLoop.makeFailedResult(error)
             } catch {
-                return context.eventLoop.makeFailedResult(Errcase.internalFailure.subErr(error))
+                return context.eventLoop.makeFailedResult(Errcase.internalFailure.subErr(error, category: .internal))
             }
         }
         
@@ -185,7 +185,7 @@ enum API {
         func parseError(body: ByteBuffer) -> Errcase.ErrType {
             let reply: BodyReply
             do {
-                reply = try required(throws: Errcase.responseParseErrorFailed, "应当解析出 Error 信息") {
+                reply = try required(throws: Errcase.responseParseErrorFailed, "应当解析出 Error 信息", category: .internal) {
                     try JSONDecoder().decode(BodyReply.self, from: Data(buffer: body))
                 }
             } catch let err {
@@ -193,9 +193,9 @@ enum API {
             }
                 
             if reply.error {
-                return Errcase.internalFailure.d(reply.reason)
+                return Errcase.internalFailure.d(reply.reason, category: .internal)
             } else {
-                return Errcase.responseParseErrorFailed.d("应当解析出 Error 信息，但失败")
+                return Errcase.responseParseErrorFailed.d("应当解析出 Error 信息，但失败", category: .internal)
             }
         }
         

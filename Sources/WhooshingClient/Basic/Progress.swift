@@ -120,16 +120,16 @@ public struct Progress: Sequence {
     }
     
     @inlinable
-    public init(pieces: UInt, bytes: UInt, allowLower: Bool = false) throws(BscError<Errcase>) {
+    public init(pieces: UInt, bytes: UInt, allowLower: Bool = false) throws(Errcase.ErrType) {
         guard pieces != 0 else {
-            throw Errcase.inputIllegal.d("不接受 0 个数据块的分割方式")
+            throw Errcase.inputIllegal.d("不接受 0 个数据块的分割方式", category: .external())
         }
         
         if bytes % pieces == 0 {
             self.chunk = bytes / pieces
         } else {
             if allowLower == false, bytes % (pieces - 1) == 0{
-                throw Errcase.pieceFailed.d("预计分片为 \(bytes) 块，但只能分为 \(bytes - 1) 块")
+                throw Errcase.pieceFailed.d("预计分片为 \(bytes) 块，但只能分为 \(bytes - 1) 块", category: .external())
             }
             self.chunk = bytes / (pieces - 1)
         }

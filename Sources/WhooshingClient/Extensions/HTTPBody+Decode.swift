@@ -23,7 +23,7 @@ public extension HTTPBody {
     @inlinable
     func bytes() -> Res<ByteBuffer, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, "未预期的行为，预期取得 bytes", category: .external())
         }
         return .success(buffer)
     }
@@ -43,9 +43,9 @@ public extension HTTPBody {
     @inlinable
     func data<T: ThrowableDataConvertable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
-        return T.make(data: buffer.data).mapError(as: DecodeErrcase.dataDecodeFailed)
+        return T.make(data: buffer.data).mapError(as: DecodeErrcase.dataDecodeFailed, category: .internal)
     }
     
     /// 将请求体内容转换为任意符合 `SafeDataConvertable` 的类型。
@@ -56,7 +56,7 @@ public extension HTTPBody {
     @inlinable
     func data<T: SafeDataConvertable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
         
         return .success(T.new(data: buffer.data))
@@ -70,10 +70,10 @@ public extension HTTPBody {
     @inlinable
     func json<T: Decodable>(as: T.Type = T.self) -> Res<T, DecodeErrcase> {
         guard case let .bytes(buffer) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
         
-        return .init(throws: DecodeErrcase.dataDecodeFailed) {
+        return .init(throws: DecodeErrcase.dataDecodeFailed, category: .internal) {
             try JSONDecoder().decode(T.self, from: buffer)
         }
     }
@@ -98,7 +98,7 @@ public extension HTTPBody {
     @inlinable
     func stream<T: ThrowableDataConvertable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) -> Res<AsyncThrowingChannel<T, Error>, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
         
         if let stream = stream as? AsyncThrowingChannel<T, Error> {
@@ -114,7 +114,7 @@ public extension HTTPBody {
                     res.finish()
                     progress?.finish()
                 } catch {
-                    let err = DecodeErrcase.streamDecodeFailed.subErr(error)
+                    let err = DecodeErrcase.streamDecodeFailed.subErr(error, category: .internal)
                     res.fail(err)
                     progress?.finish(throwing: error)
                 }
@@ -133,7 +133,7 @@ public extension HTTPBody {
     @inlinable
     func jsonStream<T: Decodable & Sendable>(as: T.Type = T.self, progress: AsyncProgress? = nil) -> Res<AsyncThrowingChannel<T, Error>, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
         
         if let stream = stream as? AsyncThrowingChannel<T, Error> {
@@ -151,7 +151,7 @@ public extension HTTPBody {
                     res.finish()
                     progress?.finish()
                 } catch {
-                    let err = DecodeErrcase.streamDecodeFailed.subErr(error)
+                    let err = DecodeErrcase.streamDecodeFailed.subErr(error, category: .internal)
                     res.fail(err)
                     progress?.finish(throwing: error)
                 }
@@ -171,7 +171,7 @@ public extension HTTPBody {
     @inlinable
     func file(to file: FilePath, options: OpenOptions.Write, startAt: Int64 = 0, progress: AsyncProgress? = nil) async -> Res<Void, DecodeErrcase> {
         guard case let .stream(stream) = self.type else {
-            return .failure(.bodyTypeNotMatch)
+            return .failure(.bodyTypeNotMatch, category: .external())
         }
         
         var fileHandler: WriteFileHandle? = nil
@@ -189,7 +189,7 @@ public extension HTTPBody {
         } catch {
             try? await fileHandler?.close()
             progress?.finish(throwing: error)
-            return .failure(.fileWriteUnknowErr, subErr: error)
+            return .failure(.fileWriteUnknowErr, category: .internal, subErr: error)
         }
         
         return .success(())
