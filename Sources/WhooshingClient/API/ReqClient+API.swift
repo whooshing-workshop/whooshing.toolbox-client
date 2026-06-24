@@ -72,7 +72,7 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
         let tokenEncrypted: Data
     }
 
-    /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行加密并哈希
+    /// 发送用户凭据以及用户口令，其中用户凭据明文发送，口令则进行哈希加密：密文 = [口令加密[口令 hash]]
     func authExchange(
         request: HTTPRequest,
         handler: RequestWrapperHandler,
@@ -90,14 +90,14 @@ final class APIReqClient: ReqClient<API.RequestIOCrypto>, SendableStorage.Key, @
                 throw Errcase.badRequest.d("解析请求中的 用户凭据 数据失败", category: .external(suggestions: ["请检查用户凭据是否正确提供"]))
             }
             
-            self.logger?.debug("API.Client-认证中: 使用用户口令加密用户口令本身")
+            self.logger?.debug("API.Client-认证中: 使用用户口令加密用户口令的 hash")
             guard let token = Data(base64Encoded: ioData.token) else {
                 throw Errcase.badRequest.d("解析请求中的 用户口令 数据失败", category: .external(suggestions: ["请检查用户口令是否正确提供"]))
             }
             
             let tokenKey = Crypto.Symm.Key(data: token)
-            let tokenEncrypted = try required(throws: Errcase.encryptFailed, category: .internal) {
-                try Crypto.Symm.encrypt(token, key: tokenKey).get()
+            let tokenEncrypted = try required(throws: Errcase.encryptFailed, "对密钥 hash 进行对称加密失败", category: .internal) {
+                try Crypto.Symm.encrypt(Crypto.hash(token), key: tokenKey).get()
             }
             
             self.logger?.debug("API.Client-认证中: 将凭据和加密后的用户口令进行 json 编码")
